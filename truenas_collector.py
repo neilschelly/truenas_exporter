@@ -231,36 +231,36 @@ class TrueNasCollector(object):
             for topology in pool['topology']['data']:
                 for disk in topology['children']:
                     disk_status.add_metric(
-                        [pool['name'], pool['path'], disk['disk'], "false"],
+                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "false"],
                         self._pool_health_enum(disk['status'])
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'], "read"],
+                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "read"],
                         disk['stats']['read_errors']
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'], "write"],
+                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "write"],
                         disk['stats']['write_errors']
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'], "checksum"],
+                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "checksum"],
                         disk['stats']['checksum_errors']
                     )
             for disk in pool['topology']['spare']:
                 disk_status.add_metric(
-                    [pool['name'], pool['path'], disk['disk'], "true"],
+                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "true"],
                     self._pool_health_enum(disk['status'])
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'], "read"],
+                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "read"],
                     disk['stats']['read_errors']
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'], "write"],
+                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "write"],
                     disk['stats']['write_errors']
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'], "checksum"],
+                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "checksum"],
                     disk['stats']['checksum_errors']
                 )
 
@@ -275,14 +275,72 @@ class TrueNasCollector(object):
             " TrueNasCollector._pool_health_enum()", file=sys.stderr)
         return 0
 
+    def _collect_replications(self):
+        replications = self.request('replication')
+
+        state = GaugeMetricFamily(
+            'truenas_replication_state',
+            'Current replication state: 0=UNKNOWN 1=SUCCESS',
+            labels=["sources", "target", "target_system", "transport"])
+        last_finished = GaugeMetricFamily(
+            'truenas_replication_last_finished',
+            'Replication last finished',
+            labels=["sources", "target", "target_system", "transport"])
+        elapsed = GaugeMetricFamily(
+            'truenas_replication_last_elapsed',
+            'Last replication elapsed seconds',
+            labels=["sources", "target", "target_system", "transport"])
+        progress = GaugeMetricFamily(
+            'truenas_replication_progress',
+            'Current replication progress',
+            labels=["sources", "target", "target_system", "transport"])
+
+        for replication in replications:
+            labels = [
+                ' '.join(replication['source_datasets']),
+                replication['target_dataset'],
+                replication['ssh_credentials']['attributes']['host'],
+                replication['transport']
+            ]
+            state.add_metric(
+                labels,
+                self._replication_state_enum(replication['job']['state'])
+            )
+            if 'datetime' in replication['state']:
+                last_finished.add_metric(
+                    labels,
+                    replication['state']['datetime']['$date']
+                )
+            if 'time_started' in replication['job']:
+                if 'time_finished' in replication['job']:
+                    elapsed.add_metric(
+                        labels,
+                        replication['job']['time_finished']['$date'] - replication['job']['time_started']['$date']
+                    )
+                else:
+                    elapsed.add_metric(
+                        labels,
+                        datetime.utcnow().timestamp() - replication['job']['time_started']['$date']
+                    )
+            progress.add_metric(
+                labels,
+                replication['job']['progress']['percent']
+            )
+
+        return [state, last_finished, elapsed, progress]
+
+    def _replication_state_enum(self, value):
+        if value == "SUCCESS":
+            return 1
+
+        unknown_enumerations.inc()
+        print(f"Unknown/new Replication state: {value}. Needs to be added to " +
+            " TrueNasCollector._replication_state_enum()", file=sys.stderr)
+        return 0
 
     # FIXME: Can get hostnames, master state from /network/configuration
     # def _collect_network_configuration(self):
     #     network = self.request('network/configuration')
-
-    # FIXME:Need to monitor replications
-    # def _collect_replications(self):
-    #     replications = self.request('replication')
 
     # FIXME: Need to monitor SMART
     # def _collect_smarttest(self):
