@@ -15,7 +15,6 @@ There are a couple of goals to this project:
 
 ## Features to Implement
 
-* Target name/IP of device to query in HTTP parameters
 * Monitor ZFS replication status
 * Monitor ZFS health only visible via CollectD right now
 * Monitor disk health statistics, SMART maybe?
