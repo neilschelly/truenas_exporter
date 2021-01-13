@@ -437,14 +437,104 @@ class TrueNasCollector(object):
 
         return [uptime, cores, memory, infometric, ha]
 
-    # FIXME: Need to monitor SMART
-    # def _collect_smarttest(self):
-    #     replications = self.request('smart/test')
+    def _collect_enclosure(self):
+        enclosure = self.request('enclosure')
+
+        health_metrics = GaugeMetricFamily(
+            'truenas_enclosure_health',
+            'TrueNAS enclosure device metrics',
+            labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
+        health_status = GaugeMetricFamily(
+            'truenas_enclosure_status',
+            'TrueNAS enclosure device health 0=UNKNOWN, 1=OK',
+            labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
+
+        for device in enclosure:
+            devicename = device['name']
+            devicemodel = device['model']
+
+            for element in device['elements']:
+                metrictype = element['name']
+                metricdevice = element['descriptor']
+
+                for leaf in element['elements']:
+                    metricelement = leaf['descriptor']
+
+                    health_metrics.add_metric(
+                        [devicename, devicemodel, metrictype, metricdevice, metricelement],
+                        self._enclosure_status_enum(leaf['status'])
+                    )
+
+                    if leaf['value'] and leaf['status'] not in ['Unknown', 'Not installed']:
+                        if metrictype == "Cooling":
+                            health_status.add_metric(
+                                [devicename, devicemodel, metrictype, metricdevice, metricelement],
+                                float(leaf['value'].split()[0])
+                            )
+                        elif metrictype == "Enclosure Services Controller Electronics":
+                            health_status.add_metric(
+                                [devicename, devicemodel, metrictype, metricdevice, metricelement],
+                                leaf['value']
+                            )
+                        elif metrictype == "Temperature Sensor":
+                            health_status.add_metric(
+                                [devicename, devicemodel, metrictype, metricdevice, metricelement],
+                                float(leaf['value'].split('C')[0])
+                            )
+                        elif metrictype == "Voltage Sensor":
+                            health_status.add_metric(
+                                [devicename, devicemodel, metrictype, metricdevice, metricelement],
+                                float(leaf['value'].split('V')[0])
+                            )
+
+        return [health_metrics, health_status]
+
+    def _enclosure_status_enum(self, value):
+        if value == "OK":
+            return 1
+        elif value == "Unknown" or value == "Not installed":
+            return 2
+
+        unknown_enumerations.inc()
+        print(f"Unknown/new enclosure health state: {value}. Needs to be added to " +
+            " TrueNasCollector._enclosure_status_enum()", file=sys.stderr)
+        return 0
+
+    def _collect_smarttest(self):
+        smarttests = self.request('smart/test/results')
+
+        smarttest = GaugeMetricFamily(
+            'truenas_smarttest_status',
+            'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS',
+            labels=['disk', 'description'])
+        lifetime = CounterMetricFamily(
+            'truenas_smarttest_lifetime',
+            'TrueNAS SMART lifetime',
+            labels=['disk','description'])
+
+        for disk in smarttests:
+            smarttest.add_metric(
+                [disk['disk'], disk['tests'][0]['description']],
+                self._smart_test_result_enum(disk['tests'][0]['status'])
+            )  
+            lifetime.add_metric(
+                [disk['disk'], disk['tests'][0]['description']],
+                disk['tests'][0]['lifetime']
+            )
+
+        return [smarttest, lifetime]
+
+    def _smart_test_result_enum(self, value):
+        if value == "SUCCESS":
+            return 1
+
+        unknown_enumerations.inc()
+        print(f"Unknown/new SMART health state: {value}. Needs to be added to " +
+            " TrueNasCollector._smart_test_result_enum()", file=sys.stderr)
+        return 0
+
+
 
     # FIXME: Need to monitor stats - might be a window to collectd stuff?
     # def _collect_stats(self):
     #     replications = self.request('stats')
-
-    # FIXME: Need to monitor enclosure temps, fan speds, etc
-    # def _collect_stats(self):
-    #     replications = self.request('enclosure')
