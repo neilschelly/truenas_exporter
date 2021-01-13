@@ -2,6 +2,7 @@
 
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 from prometheus_client import Counter
+from datetime import datetime
 import requests, urllib3, sys
 from types import FunctionType
 urllib3.disable_warnings()
@@ -280,7 +281,7 @@ class TrueNasCollector(object):
 
         state = GaugeMetricFamily(
             'truenas_replication_state',
-            'Current replication state: 0=UNKNOWN 1=SUCCESS',
+            'Current replication state: 0=UNKNOWN 1=SUCCESS 2=RUNNING',
             labels=["sources", "target", "target_system", "transport"])
         last_finished = GaugeMetricFamily(
             'truenas_replication_last_finished',
@@ -288,7 +289,7 @@ class TrueNasCollector(object):
             labels=["sources", "target", "target_system", "transport"])
         elapsed = GaugeMetricFamily(
             'truenas_replication_last_elapsed',
-            'Last replication elapsed seconds',
+            'Last replication elapsed milliseconds',
             labels=["sources", "target", "target_system", "transport"])
         progress = GaugeMetricFamily(
             'truenas_replication_progress',
@@ -312,7 +313,7 @@ class TrueNasCollector(object):
                     replication['state']['datetime']['$date']
                 )
             if 'time_started' in replication['job']:
-                if 'time_finished' in replication['job']:
+                if replication['job']['time_finished']:
                     elapsed.add_metric(
                         labels,
                         replication['job']['time_finished']['$date'] - replication['job']['time_started']['$date']
@@ -320,7 +321,7 @@ class TrueNasCollector(object):
                 else:
                     elapsed.add_metric(
                         labels,
-                        datetime.utcnow().timestamp() - replication['job']['time_started']['$date']
+                        1000*datetime.utcnow().timestamp() - replication['job']['time_started']['$date']
                     )
             progress.add_metric(
                 labels,
@@ -332,31 +333,13 @@ class TrueNasCollector(object):
     def _replication_state_enum(self, value):
         if value == "SUCCESS":
             return 1
+        if value == "RUNNING":
+            return 2
 
         unknown_enumerations.inc()
         print(f"Unknown/new Replication state: {value}. Needs to be added to " +
             " TrueNasCollector._replication_state_enum()", file=sys.stderr)
         return 0
-
-    # FIXME: Can get hostnames, master state from /network/configuration
-    # def _collect_network_configuration(self):
-    #     network = self.request('network/configuration')
-
-    # FIXME: Need to monitor SMART
-    # def _collect_smarttest(self):
-    #     replications = self.request('smart/test')
-
-    # FIXME: Need to monitor stats - might be a window to collectd stuff?
-    # def _collect_stats(self):
-    #     replications = self.request('stats')
-
-    # FIXME: Need to monitor enclosure temps, fan speds, etc
-    # def _collect_stats(self):
-    #     replications = self.request('enclosure')
-
-    # FIXME: Need to monitor failover information? need ASCII non-JSON parsing
-    # def _collect_stats(self):
-    #     replications = self.request('failover')
 
     def _collect_pool_snapshot_tasks(self):
         tasks = self.request('pool/snapshottask')
@@ -394,7 +377,7 @@ class TrueNasCollector(object):
 
     def _collect_system_info(self):
         info = self.request('system/info')
-        freenas = self.request('system/info')
+        network = self.request('network/configuration')
 
         uptime = CounterMetricFamily(
             'truenas_uptime',
@@ -412,6 +395,10 @@ class TrueNasCollector(object):
             'truenas_info',
             'TrueNAS Information',
             labels=["hostname", "version", "serial", "serial_ha", "model", "product", "manufacturer"])
+        ha = GaugeMetricFamily(
+            'truenas_ha',
+            'TrueNAS High Availability Controller Status: 0=N/A 1=hostname_1 master 2=hostname_2 master',
+            labels=["hostname", "hostname_1", "hostname_2"])
 
         uptime.add_metric(
             [info['hostname']],
@@ -438,5 +425,26 @@ class TrueNasCollector(object):
             infolabels.keys(),
             infolabels
         )
+        ha_status = 0
+        if network['hostname_virtual'] and network['hostname_local'] == network['hostname']:
+            ha_status = 1
+        elif network['hostname_virtual'] and network['hostname_local'] == network['hostname_b']:
+            ha_status = 2
+        ha.add_metric(
+            [info['hostname'], network['hostname'], network['hostname_b']],
+            ha_status
+        )
 
-        return [uptime, cores, memory, infometric]
+        return [uptime, cores, memory, infometric, ha]
+
+    # FIXME: Need to monitor SMART
+    # def _collect_smarttest(self):
+    #     replications = self.request('smart/test')
+
+    # FIXME: Need to monitor stats - might be a window to collectd stuff?
+    # def _collect_stats(self):
+    #     replications = self.request('stats')
+
+    # FIXME: Need to monitor enclosure temps, fan speds, etc
+    # def _collect_stats(self):
+    #     replications = self.request('enclosure')
