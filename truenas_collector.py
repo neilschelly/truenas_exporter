@@ -30,13 +30,22 @@ class TrueNasCollector(object):
         """ List of collect functions in this class to call """
         return [x for x, y in TrueNasCollector.__dict__.items() if type(y) == FunctionType and y.__name__.startswith("_collect_")]
 
-    def request(self, apipath):
-        r = requests.get(
-            f'https://{self.target}/api/v2.0/{apipath}',
-            auth=(self.username, self.password),
-            headers={'Content-Type': 'application/json'},
-            verify=False
-        )
+    def request(self, apipath, data=None):
+        if data:
+            r = requests.post(
+                f'https://{self.target}/api/v2.0/{apipath}',
+                auth=(self.username, self.password),
+                headers={'Content-Type': 'application/json'},
+                verify=False,
+                json = data
+            )
+        else:
+            r = requests.get(
+                f'https://{self.target}/api/v2.0/{apipath}',
+                auth=(self.username, self.password),
+                headers={'Content-Type': 'application/json'},
+                verify=False
+            )
         return r.json()
 
     def _collect_cloudsync(self):
@@ -321,7 +330,7 @@ class TrueNasCollector(object):
                 else:
                     elapsed.add_metric(
                         labels,
-                        1000*datetime.utcnow().timestamp() - replication['job']['time_started']['$date']
+                        1000*datetime.now().timestamp() - replication['job']['time_started']['$date']
                     )
             progress.add_metric(
                 labels,
@@ -533,8 +542,310 @@ class TrueNasCollector(object):
             " TrueNasCollector._smart_test_result_enum()", file=sys.stderr)
         return 0
 
+    def _collect_stats(self):
+        stats = self.request('stats/get_sources')
 
+        collectd = GaugeMetricFamily(
+            'truenas_collectd',
+            'TrueNAS CollectD Metrics',
+            labels=['source', 'metric', 'submetric', 'metrictype'])
 
-    # FIXME: Need to monitor stats - might be a window to collectd stuff?
-    # def _collect_stats(self):
-    #     replications = self.request('stats')
+        sources = {}
+        sources['cpu'] = ['aggregation-cpu-average', 'aggregation-cpu-sum']
+        sources['temperature'] = []
+        sources['ctl'] = ['ctl-ioctl', 'ctl-tpc']
+        sources['df'] = []
+        sources['disk'] = []
+        sources['interface'] = []
+
+        disk_list = []
+
+        for source in stats:
+            if source.split('-')[0] == 'cpu':
+                sources['cpu'] += [source]
+            elif source.split('-')[0] == 'cputemp':
+                sources['temperature'] += [source]
+            elif source.split('-')[0] == 'df':
+                sources['df'] += [source]
+            elif source.split('-')[0] == 'disk':
+                sources['disk'] += [source]
+            elif source.split('-')[0] == 'disktemp':
+                sources['temperature'] += [source]
+            elif source.split('-')[0] == 'interface':
+                sources['interface'] += [source]
+
+        request_timestamp = int(datetime.now().timestamp()) - 30
+        sources_metadata = []
+        sources_request = {
+            "stats_list": [],
+            "stats-filter": {
+                "start": request_timestamp,
+                "end": request_timestamp
+            }
+        }
+
+        for source in sources['cpu']:
+            for metric in ['cpu-idle', 'cpu-nice', 'cpu-system', 'cpu-interrupt', 'cpu-user']:
+                sources_request['stats_list'] += [{
+                    "source": source,
+                    "type": metric,
+                    "dataset": "value"
+                }]
+                sources_metadata += [{
+                    "source": source,
+                    "metric": metric,
+                    "submetric": "value",
+                    "metrictype": "DERIVE"
+                }]
+        for source in sources['temperature']:
+            sources_request['stats_list'] += [{
+                "source": source,
+                "type": "temperature",
+                "dataset": "value"
+            }]
+            sources_metadata += [{
+                "source": source,
+                "metric": "temperature",
+                "submetric": "value",
+                "metrictype": "GAUGE"
+            }]
+        for source in sources['ctl']:
+            for metric in ['disk_octets', 'disk_octets-0-0', 'disk_ops', 'disk_ops-0-0', 'disk_time', 'disk_time-0-0']:
+                for submetric in ['read', 'write']:
+                    sources_request['stats_list'] += [{
+                        "source": source,
+                        "type": metric,
+                        "dataset": submetric
+                    }]
+                    sources_metadata += [{
+                        "source": source,
+                        "metric": metric,
+                        "submetric": submetric,
+                        "metrictype": "DERIVE"
+                    }]
+        for source in sources['df']:
+            for metric in ['df_complex-free', 'df_complex-reserved', 'df_complex-used']:
+                sources_request['stats_list'] += [{
+                    "source": source,
+                    "type": metric,
+                    "dataset": "value"
+                }]
+                sources_metadata += [{
+                    "source": source,
+                    "metric": metric,
+                    "submetric": "value",
+                    "metrictype": "GAUGE"
+                }]
+        for source in sources['disk']:
+            disk_list += [source.split('-')[1]]
+            for metric in ['disk_octets', 'disk_ops', 'disk_time']:
+                for submetric in ['read', 'write']:
+                    sources_request['stats_list'] += [{
+                        "source": source,
+                        "type": metric,
+                        "dataset": submetric
+                    }]
+                    sources_metadata += [{
+                        "source": source,
+                        "metric": metric,
+                        "submetric": submetric,
+                        "metrictype": "DERIVE"
+                    }]
+        for source in sources['disk']:
+            for submetric in ['io_time', 'weighted_io_time']:
+                sources_request['stats_list'] += [{
+                    "source": source,
+                    "type": 'disk_io_time',
+                    "dataset": submetric
+                }]
+                sources_metadata += [{
+                    "source": source,
+                    "metric": 'disk_io_time',
+                    "submetric": submetric,
+                    "metrictype": "DERIVE"
+                }]
+        for disk in disk_list:
+            sources_request['stats_list'] += [{
+                "source": 'geom_stat',
+                "type": '-'.join(['geom_busy_percent', disk]),
+                "dataset": "value"
+            }]
+            sources_metadata += [{
+                "source": 'geom_stat',
+                "metric": '-'.join(['geom_busy_percent', disk]),
+                "submetric": "value",
+                "metrictype": "GAUGE"
+            }]
+        for disk in disk_list:
+            for metric in ['geom_ops', 'geom_queue']:
+                sources_request['stats_list'] += [{
+                    "source": 'geom_stat',
+                    "type": '-'.join([metric, disk]),
+                    "dataset": "length"
+                }]
+                sources_metadata += [{
+                    "source": 'geom_stat',
+                    "metric": '-'.join([metric, disk]),
+                    "submetric": "length",
+                    "metrictype": "GAUGE"
+                }]
+        for disk in disk_list:
+            for metric in ['geom_bw', 'geom_latency', 'geom_ops_rwd']:
+                for submetric in ['delete', 'read', 'write']:
+                    sources_request['stats_list'] += [{
+                        "source": 'geom_stat',
+                        "type": '-'.join([metric, disk]),
+                        "dataset": submetric
+                    }]
+                    sources_metadata += [{
+                        "source": 'geom_stat',
+                        "metric": '-'.join([metric, disk]),
+                        "submetric": submetric,
+                        "metrictype": "GAUGE"
+                    }]
+        for source in sources['interface']:
+            for metric in ['if_errors', 'if_octets', 'if_packets']:
+                for submetric in ['rx', 'tx']:
+                    sources_request['stats_list'] += [{
+                        "source": source,
+                        "type": metric,
+                        "dataset": submetric
+                    }]
+                    sources_metadata += [{
+                        "source": source,
+                        "metric": metric,
+                        "submetric": submetric,
+                        "metrictype": "DERIVE"
+                    }]
+        for submetric in ['longterm', 'midterm', 'shortterm']:
+            sources_request['stats_list'] += [{
+                "source": "load",
+                "type": 'load',
+                "dataset": submetric
+            }]
+            sources_metadata += [{
+                "source": "load",
+                "metric": 'load',
+                "submetric": submetric,
+                "metrictype": "GAUGE"
+            }]
+        for metric in ['active', 'cache', 'free', 'inactive', 'laundry', 'wired']:
+            sources_request['stats_list'] += [{
+                "source": "memory",
+                "type": '-'.join(['memory', metric]),
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "memory",
+                "metric": '-'.join(['memory', metric]),
+                "submetric": 'value',
+                "metrictype": "GAUGE"
+            }]
+        for source in ['nfsstat-client', 'nfsstat-server']:
+            for metric in ['access', 'commit', 'create', 'fsinfo', 'fsstat', 'getattr', 'link', 'lookup', 'mkdir', 'mknod', 'pathconf', 'read', 'readdir', 'readirplus', 'readlink', 'remove', 'rename', 'rmdir', 'setattr', 'symlink', 'write']:
+                sources_request['stats_list'] += [{
+                    "source": source,
+                    "type": '-'.join(['nfsstat', metric]),
+                    "dataset": 'value'
+                }]
+                sources_metadata += [{
+                    "source": "memory",
+                    "metric": '-'.join(['memory', metric]),
+                    "submetric": 'value',
+                    "metrictype": "DERIVE"
+                }]
+        for metric in ['blocked', 'idle', 'running', 'sleeping', 'stopped', 'wait', 'zombies']:
+            sources_request['stats_list'] += [{
+                "source": "processes",
+                "type": '-'.join(['ps_state', metric]),
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "processes",
+                "metric": '-'.join(['ps_state', metric]),
+                "submetric": 'value',
+                "metrictype": "GAUGE"
+            }]
+        for metric in ['swap-free', 'swap-used']:
+            sources_request['stats_list'] += [{
+                "source": "swap",
+                "type": metric,
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "swap",
+                "metric": metric,
+                "submetric": 'value',
+                "metrictype": "GAUGE"
+            }]
+        sources_request['stats_list'] += [{
+            "source": "uptime",
+            "type": "uptime",
+            "dataset": 'value'
+        }]
+        sources_metadata += [{
+            "source": "uptime",
+            "metric": "uptime",
+            "submetric": 'value',
+            "metrictype": "GAUGE"
+        }]
+        for metric in ['cache_eviction-cached', 'cache_eviction-eligible', 'cache_eviction-ineligible', 'cache_operation-allocated', 'cache_operation-deleted', 'cache_result-demand_data-hit', 'cache_result-demand_data-miss', 'cache_result-demand_metadata-hit', 'cache_result-demand_metadata-miss', 'cache_result-mfu-hit', 'cache_result-mfu_ghost-hit', 'cache_result-mru-hit', 'cache_result-mru_ghost-hit', 'cache_result-prefetch_data-hit', 'cache_result-prefetch_data-miss', 'cache_result-prefetch_metadata-hit', 'cache_result-prefetch_metadata-miss', 'hash_collisions', 'memory_throttle_count', 'mutex_operations-miss']:
+            sources_request['stats_list'] += [{
+                "source": "zfs_arc",
+                "type": metric,
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "zfs_arc",
+                "metric": metric,
+                "submetric": 'value',
+                "metrictype": "DERIVE"
+            }]
+        for metric in ['cache_ratio-arc', 'cache_ratio-L2', 'cache_size-anon_size', 'cache_size-arc', 'cache_size-c', 'cache_size-c_max', 'cache_size-c_min', 'cache_size-hdr_size', 'cache_size-L2', 'cache_size-metadata_size', 'cache_size-mfu_ghost_size', 'cache_size-mfu_size', 'cache_size-mru_ghost_size', 'cache_size-mru_size', 'cache_size-other_size', 'cache_size-p']:
+            sources_request['stats_list'] += [{
+                "source": "zfs_arc",
+                "type": metric,
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "zfs_arc",
+                "metric": metric,
+                "submetric": 'value',
+                "metrictype": "GAUGE"
+            }]
+        for submetric in ['rx', 'tx',]:
+            sources_request['stats_list'] += [{
+                "source": "zfs_arc",
+                "type": "io_octets-L2",
+                "dataset": submetric
+            }]
+            sources_metadata += [{
+                "source": "zfs_arc",
+                "metric": "io_octets-L2",
+                "submetric": submetric,
+                "metrictype": "DERIVE"
+            }]
+        for metric in ['arcstat_ratio_arc-hits', 'arcstat_ratio_arc-l2_hits', 'arcstat_ratio_arc-l2_misses', 'arcstat_ratio_arc-misses', 'arcstat_ratio_data-demand_data_hits', 'arcstat_ratio_data-demand_data_misses', 'arcstat_ratio_data-prefetch_data_hits', 'arcstat_ratio_data-prefetch_data_misses', 'arcstat_ratio_metadata-demand_metadata_hits', 'arcstat_ratio_metadata-demand_metadata_misses', 'arcstat_ratio_metadata-prefetch_metadata_hits', 'arcstat_ratio_metadata-prefetch_metadata_misses', 'arcstat_ratio_mu-mfu_ghost_hits', 'arcstat_ratio_mu-mfu_hits', 'arcstat_ratio_mu-mru_ghost_hits', 'arcstat_ratio_mu-mru_hits', 'gauge_arcstats_raw-l2_asize', 'gauge_arcstats_raw-l2_hdr_size', 'gauge_arcstats_raw-l2_size', 'gauge_arcstats_raw_arcmeta-arc_meta_limit', 'gauge_arcstats_raw_arcmeta-arc_meta_max', 'gauge_arcstats_raw_arcmeta-arc_meta_min', 'gauge_arcstats_raw_arcmeta-arc_meta_used', 'gauge_arcstats_raw_counts-allocated', 'gauge_arcstats_raw_counts-deleted', 'gauge_arcstats_raw_counts-mutex_miss', 'gauge_arcstats_raw_counts-recycle_miss', 'gauge_arcstats_raw_counts-stolen', 'gauge_arcstats_raw_cp-c', 'gauge_arcstats_raw_cp-c_max', 'gauge_arcstats_raw_cp-c_min', 'gauge_arcstats_raw_cp-p', 'gauge_arcstats_raw_demand-demand_data_hits', 'gauge_arcstats_raw_demand-demand_data_misses', 'gauge_arcstats_raw_demand-demand_metadata_hits', 'gauge_arcstats_raw_demand-demand_metadata_misses', 'gauge_arcstats_raw_duplicate-duplicate_buffers', 'gauge_arcstats_raw_duplicate-duplicate_buffers_size', 'gauge_arcstats_raw_duplicate-duplicate_reads', 'gauge_arcstats_raw_evict-evict_l2_cached', 'gauge_arcstats_raw_evict-evict_l2_eligible', 'gauge_arcstats_raw_evict-evict_l2_ineligible', 'gauge_arcstats_raw_evict-evict_skip', 'gauge_arcstats_raw_hash-hash_chain_max', 'gauge_arcstats_raw_hash-hash_chains', 'gauge_arcstats_raw_hash-hash_collisions', 'gauge_arcstats_raw_hash-hash_elements', 'gauge_arcstats_raw_hash-hash_elements_max', 'gauge_arcstats_raw_hits_misses-hits', 'gauge_arcstats_raw_hits_misses-misses', 'gauge_arcstats_raw_l2-l2_cksum_bad', 'gauge_arcstats_raw_l2-l2_feeds', 'gauge_arcstats_raw_l2-l2_hits', 'gauge_arcstats_raw_l2-l2_io_error', 'gauge_arcstats_raw_l2-l2_misses', 'gauge_arcstats_raw_l2-l2_rw_clash', 'gauge_arcstats_raw_l2_compress-l2_compress_failures', 'gauge_arcstats_raw_l2_compress-l2_compress_successes', 'gauge_arcstats_raw_l2_compress-l2_compress_zeros', 'gauge_arcstats_raw_l2_free-l2_cdata_free_on_write', 'gauge_arcstats_raw_l2_free-l2_free_on_write', 'gauge_arcstats_raw_l2abort-l2_abort_lowmem', 'gauge_arcstats_raw_l2bytes-l2_read_bytes', 'gauge_arcstats_raw_l2bytes-l2_write_bytes', 'gauge_arcstats_raw_l2evict-l2_evict_lock_retry', 'gauge_arcstats_raw_l2evict-l2_evict_reading', 'gauge_arcstats_raw_l2write-l2_write_buffer_bytes_scanned', 'gauge_arcstats_raw_l2write-l2_write_buffer_iter', 'gauge_arcstats_raw_l2write-l2_write_buffer_list_iter', 'gauge_arcstats_raw_l2write-l2_write_buffer_list_null_iter', 'gauge_arcstats_raw_l2write-l2_write_full', 'gauge_arcstats_raw_l2write-l2_write_in_l2', 'gauge_arcstats_raw_l2write-l2_write_io_in_progress', 'gauge_arcstats_raw_l2write-l2_write_not_cacheable', 'gauge_arcstats_raw_l2write-l2_write_passed_headroom', 'gauge_arcstats_raw_l2write-l2_write_pios', 'gauge_arcstats_raw_l2write-l2_write_spa_mismatch', 'gauge_arcstats_raw_l2write-l2_write_trylock_fail', 'gauge_arcstats_raw_l2writes-l2_writes_done', 'gauge_arcstats_raw_l2writes-l2_writes_error', 'gauge_arcstats_raw_l2writes-l2_writes_hdr_miss', 'gauge_arcstats_raw_l2writes-l2_writes_sent', 'gauge_arcstats_raw_memcount-memory_throttle_count', 'gauge_arcstats_raw_mru-mfu_ghost_hits', 'gauge_arcstats_raw_mru-mfu_hits', 'gauge_arcstats_raw_mru-mru_ghost_hits', 'gauge_arcstats_raw_mru-mru_hits', 'gauge_arcstats_raw_prefetch-prefetch_data_hits', 'gauge_arcstats_raw_prefetch-prefetch_data_misses', 'gauge_arcstats_raw_prefetch-prefetch_metadata_hits', 'gauge_arcstats_raw_prefetch-prefetch_metadata_misses', 'gauge_arcstats_raw_size-data_size', 'gauge_arcstats_raw_size-hdr_size', 'gauge_arcstats_raw_size-other_size', 'gauge_arcstats_raw_size-size']:
+            sources_request['stats_list'] += [{
+                "source": "zfs_arc_v2",
+                "type": metric,
+                "dataset": 'value'
+            }]
+            sources_metadata += [{
+                "source": "zfs_arc_v2",
+                "metric": metric,
+                "submetric": 'value',
+                "metrictype": "GAUGE"
+            }]
+
+        data = self.request("stats/get_data", sources_request)
+
+        for index, metric in enumerate(sources_metadata):
+            if data['data'][0][index]:
+                collectd.add_metric(
+                    [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
+                    str(data['data'][0][index])
+                )
+
+        return [collectd]
+
