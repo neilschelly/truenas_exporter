@@ -5,6 +5,8 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+ENV PYTHONUNBUFFERED=1
+
 COPY truenas_exporter.py .
 COPY truenas_collector.py .
 ENTRYPOINT [ "python", "./truenas_exporter.py" ]
