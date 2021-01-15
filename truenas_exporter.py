@@ -25,15 +25,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Return Prometheus metrics from querying the TrueNAS API')
     parser.add_argument('--port', dest='port', default=9912,
-                        help='Listening HTTP port for Prometheus exporter')
+        help='Listening HTTP port for Prometheus exporter')
     parser.add_argument('--target', dest='target', required=True,
-                        help='Target IP/Name of TrueNAS Device')
+        help='Target IP/Name of TrueNAS Device')
+    parser.add_argument('--skip-snmp', dest='skip_snmp', default=False,
+        action='store_true', help='Skip metrics available via SNMP - may ' +
+        'save about a second in scrape time')
+
     args = parser.parse_args()
 
     metrics_app = make_wsgi_app()
     username = os.environ.get('TRUENAS_USER')
     password = os.environ.get('TRUENAS_PASS')
     target = args.target
+    skip_snmp = args.skip_snmp
 
     if (username == None or len(username) == 0):
         print("Make sure to set TRUENAS_USER environment variable to the API " +
@@ -45,12 +50,19 @@ if __name__ == '__main__':
             "user's password.", file=sys.stderr)
         parser.print_help()
         exit(1)
-    # FIXME Try a request for https://target to make sure we can reach target
 
-    REGISTRY.register(TrueNasCollector(target, username, password))
+    r = requests.get(
+        f'https://{target}/api/v2.0/core/ping',
+        auth=(username, password),
+        headers={'Content-Type': 'application/json'},
+        verify=False
+    )
+    if r.status_code != 200 or r.text != '"pong"':
+        print("Unable to confirm TrueNAS connectivity: " + r.text +
+            f' at https://{target}/api/v2.0/core/ping', file=sys.stderr)
+        parser.print_help()
+        exit(1)
+
+    REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
     httpd = make_server('', args.port, truenas_exporter)
     httpd.serve_forever()
-
-    # httpd = make_server('', args.port, truenas_exporter, ThreadingWSGIServer)
-    # t = threading.Thread(target=httpd.serve_forever)
-    # t.start()

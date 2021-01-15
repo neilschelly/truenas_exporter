@@ -12,10 +12,11 @@ from pprint import pprint
 unknown_enumerations = Counter('truenas_exporter_unknown_enumerations', 'Enumerations that cannot be identified. Check the logs.')
 
 class TrueNasCollector(object):
-    def __init__(self, target, username, password):
+    def __init__(self, target, username, password, skip_snmp = False):
         self.target = target
         self.username = username
         self.password = password
+        self.skip_snmp = skip_snmp
 
     def collect(self):
         metrics = []
@@ -151,6 +152,9 @@ class TrueNasCollector(object):
         return [metrics]
 
     def _collect_interfaces(self):
+        if self.skip_snmp:
+            return []
+
         interfaces = self.request('interface')
 
         metrics = GaugeMetricFamily(
@@ -178,6 +182,9 @@ class TrueNasCollector(object):
         return 0
 
     def _collect_pool_datasets(self):
+        if self.skip_snmp:
+            return []
+
         datasets = self.request('pool/dataset')
 
         size = GaugeMetricFamily(
@@ -210,6 +217,9 @@ class TrueNasCollector(object):
         return [size,used,children]
 
     def _collect_pool(self):
+        if self.skip_snmp:
+            return []
+
         pools = self.request('pool')
 
         status = GaugeMetricFamily(
@@ -543,6 +553,30 @@ class TrueNasCollector(object):
         return 0
 
     def _collect_stats(self):
+        """ Return all current data from CollectD collections """
+
+        # This is complicated for a bunch of performance reasons
+        # /api/v2.0/stats/get_sources and available metrics for the source
+        #
+        # You can get the definition for a source/metric from above by sending a
+        # POST like {"source": "zfs_arc", "type": "hash_collisions"} to
+        # /api/v2.0/stats/get_dataset_info
+        #
+        # Requesting that for all items in the get_sources results one at a time
+        # takes a prohibitively long time. Information from that process was
+        # used to build this function that cycles through the hardware inventory
+        # from /stats/get_sources and uses it to build a list of metrics to
+        # request data from
+        #
+        # The actual data from these sources can be done with a single request
+        # to /api/v2.0/stats/get_data, using the structure for each source
+        # derived above.
+        #
+        # After all that, there's no way to get "the most recent data point" for
+        # a given metric. As a result, we are requesting the metrics from 30s
+        # ago because those should exist by now. Requesting metrics for "now"
+        # will yield None for the values.
+
         stats = self.request('stats/get_sources')
 
         collectd = GaugeMetricFamily(
@@ -703,20 +737,21 @@ class TrueNasCollector(object):
                         "submetric": submetric,
                         "metrictype": "GAUGE"
                     }]
-        for source in sources['interface']:
-            for metric in ['if_errors', 'if_octets', 'if_packets']:
-                for submetric in ['rx', 'tx']:
-                    sources_request['stats_list'] += [{
-                        "source": source,
-                        "type": metric,
-                        "dataset": submetric
-                    }]
-                    sources_metadata += [{
-                        "source": source,
-                        "metric": metric,
-                        "submetric": submetric,
-                        "metrictype": "DERIVE"
-                    }]
+        if self.skip_snmp == False:
+            for source in sources['interface']:
+                for metric in ['if_errors', 'if_octets', 'if_packets']:
+                    for submetric in ['rx', 'tx']:
+                        sources_request['stats_list'] += [{
+                            "source": source,
+                            "type": metric,
+                            "dataset": submetric
+                        }]
+                        sources_metadata += [{
+                            "source": source,
+                            "metric": metric,
+                            "submetric": submetric,
+                            "metrictype": "DERIVE"
+                        }]
         for submetric in ['longterm', 'midterm', 'shortterm']:
             sources_request['stats_list'] += [{
                 "source": "load",
