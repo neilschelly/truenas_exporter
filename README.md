@@ -1,33 +1,39 @@
 # TrueNAS Exporter
 
-There are a couple of goals to this project:
+The TrueNAS devices can be monitored by SNMP and CollectD. The CollectD stuff is
+only really visible in the UI in RRD graphs, unless you install the [collectd
+exporter](https://github.com/prometheus/collectd_exporter) onto the devices.
+That works, but is unreliable, because many things like system upgrades, HA
+failovers, etc will "fix" the installation and remove it.
 
-1. The TrueNAS isn't completely monitored now. We are monitoring SNMP and
-  CollectD statistics, but those are lacking in visibility to things like disk
-  health, ZFS health, and any tasks' status.
-2. The CollectD statistics are necessary for whatever we have now,
-  but they are hacky. They lose their CollectD exporter configuration on every
-  reboot, failover, or update, and it needs to be setup again as per the
-  [docs](https://docs.iracing.at/operations/networking/truenas/).
-3. The API can be designed to be a publicly useful thing we can publish on
-  GitHub or BitBucket for more community usefulness.
+## Usage
 
+### CLI
 
-## Features to Implement
+```shell
+$ ./truenas_exporter.py --help
+usage: truenas_exporter.py [-h] [--port PORT] --target TARGET [--skip-snmp]
 
-* Monitor ZFS replication status
-* Monitor ZFS health only visible via CollectD right now
-* Monitor disk health statistics, SMART maybe?
-* Monitor tasks like cloud sync tasks.
-* Look for other things useful from CollectD and start using API for those too
-  
-* Available via CollectD
-    * Disk IO/Queue/latency
-    * CPU Load/utilization/temperature
-    * memory utilization, swap
-    * ZFS ARC Hash Collisions, ARC eviction, L2ARC Throughput
-* Available over SNMP (optional if --include-available-by-snmp)
-    * Dataset Utilization available over SNMP
-    * Network Interface traffic
-    * Zpool Utilization
-    * ZFS ARC/L2ARC size, ARC/L2ARC Cache hit ratio, ARC/L2ARC requests
+Return Prometheus metrics from querying the TrueNAS API
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --port PORT      Listening HTTP port for Prometheus exporter
+  --target TARGET  Target IP/Name of TrueNAS Device
+  --skip-snmp      Skip metrics available via SNMP - may save about a second
+                   in scrape time
+```
+At a minimum, you must give it a target TrueNAS device on the command line. It
+will read the environment variables `TRUENAS_USER` and `TRUENAS_PASS` for
+authenticating to the API. For TrueNAS devices, the `TRUENAS_USER` must be
+`root`.  The `--port` option can be specified to any port you'd like to listen
+on for scrape requests.
+
+The `--skip-snmp` option should shave about a second or two off the scrape time
+by skipping metrics that can also be easily retrieved via SNMP.
+
+### Docker Container
+
+* `make build` will create a container.
+* `TARGET=truenas.example.net make run` will run it, targeting a TrueNAS device
+  called truenas.example.net.

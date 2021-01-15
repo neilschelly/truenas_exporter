@@ -23,7 +23,8 @@ def truenas_exporter(environ, start_fn):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
-        description='Return Prometheus metrics from querying the TrueNAS API')
+        description='Return Prometheus metrics from querying the TrueNAS API.' +
+        'Set TRUENAS_USER and TRUENAS_PASS as needed to reach the API.')
     parser.add_argument('--port', dest='port', default=9912,
         help='Listening HTTP port for Prometheus exporter')
     parser.add_argument('--target', dest='target', required=True,
@@ -51,17 +52,22 @@ if __name__ == '__main__':
         parser.print_help()
         exit(1)
 
-    r = requests.get(
-        f'https://{target}/api/v2.0/core/ping',
-        auth=(username, password),
-        headers={'Content-Type': 'application/json'},
-        verify=False
-    )
-    if r.status_code != 200 or r.text != '"pong"':
-        print("Unable to confirm TrueNAS connectivity: " + r.text +
-            f' at https://{target}/api/v2.0/core/ping', file=sys.stderr)
-        parser.print_help()
-        exit(1)
+    try:
+        r = requests.get(
+            f'https://{target}/api/v2.0/core/ping',
+            auth=(username, password),
+            headers={'Content-Type': 'application/json'},
+            verify=False
+        )
+        if r.status_code != 200 or r.text != '"pong"':
+            print("Unable to confirm TrueNAS connectivity: " + r.text +
+                f' at https://{target}/api/v2.0/core/ping', file=sys.stderr)
+            parser.print_help()
+            exit(1)
+    except Exception as e: 
+            print("Unable to confirm TrueNAS connectivity: " + str(e), file=sys.stderr)
+            parser.print_help()
+            exit(1)
 
     REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
     httpd = make_server('', args.port, truenas_exporter)
