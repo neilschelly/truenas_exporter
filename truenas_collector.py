@@ -877,19 +877,15 @@ class TrueNasCollector(object):
 
         data = self.request("stats/get_data", sources_request)
 
-        try:
+        if len(data['data']) > 0:
             for index, metric in enumerate(sources_metadata):
                 if data['data'][0][index]:
                     collectd.add_metric(
                         [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
                         str(data['data'][0][index])
                     )
-        except Exception as e:
-            print(e)
-            print("Length of sources_metadata: " + str(len(sources_metadata)))
-            print("response data: " + str(data['data']))
-            sys.stdout.flush()
-
+        else:
+            print("Empty response for collectd metadata for unknown reason", file=sys.stderr)
 
         return [collectd]
 
