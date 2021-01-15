@@ -608,7 +608,7 @@ class TrueNasCollector(object):
             elif source.split('-')[0] == 'interface':
                 sources['interface'] += [source]
 
-        request_timestamp = int(datetime.now().timestamp()) - 30
+        request_timestamp = int(datetime.now().timestamp()) - 60
         sources_metadata = []
         sources_request = {
             "stats_list": [],
@@ -875,12 +875,19 @@ class TrueNasCollector(object):
 
         data = self.request("stats/get_data", sources_request)
 
-        for index, metric in enumerate(sources_metadata):
-            if data['data'][0][index]:
-                collectd.add_metric(
-                    [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
-                    str(data['data'][0][index])
-                )
+        try:
+            for index, metric in enumerate(sources_metadata):
+                if data['data'][0][index]:
+                    collectd.add_metric(
+                        [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
+                        str(data['data'][0][index])
+                    )
+        except Exception as e:
+            print(e)
+            print("Length of sources_metadata: " + str(len(sources_metadata)))
+            print("response data: " + str(data['data']))
+            sys.stdout.flush()
+
 
         return [collectd]
 
