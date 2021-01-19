@@ -300,7 +300,7 @@ class TrueNasCollector(object):
 
         state = GaugeMetricFamily(
             'truenas_replication_state',
-            'Current replication state: 0=UNKNOWN 1=SUCCESS 2=RUNNING',
+            'Current replication state: 0=UNKNOWN 1=SUCCESS 2=RUNNING 3=FAILED 4=WAITING',
             labels=["sources", "target", "target_system", "transport"])
         last_finished = GaugeMetricFamily(
             'truenas_replication_last_finished',
@@ -342,10 +342,11 @@ class TrueNasCollector(object):
                         labels,
                         1000*datetime.now().timestamp() - replication['job']['time_started']['$date']
                     )
-            progress.add_metric(
-                labels,
-                replication['job']['progress']['percent']
-            )
+            if replication['job']['progress']['percent']:
+                progress.add_metric(
+                    labels,
+                    replication['job']['progress']['percent']
+                )
 
         return [state, last_finished, elapsed, progress]
 
@@ -354,6 +355,10 @@ class TrueNasCollector(object):
             return 1
         if value == "RUNNING":
             return 2
+        if value == "FAILED":
+            return 3
+        if value == "WAITING":
+            return 4
 
         unknown_enumerations.inc()
         print(f"Unknown/new Replication state: {value}. Needs to be added to " +
@@ -467,7 +472,7 @@ class TrueNasCollector(object):
             labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
         health_status = GaugeMetricFamily(
             'truenas_enclosure_status',
-            'TrueNAS enclosure device health 0=UNKNOWN, 1=OK',
+            'TrueNAS enclosure device health 0=UNKNOWN, 1=OK, 2=Unknown/Not-installed 3=Critical',
             labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
 
         for device in enclosure:
@@ -515,6 +520,8 @@ class TrueNasCollector(object):
             return 1
         elif value == "Unknown" or value == "Not installed":
             return 2
+        elif value == "Critical":
+            return 3
 
         unknown_enumerations.inc()
         print(f"Unknown/new enclosure health state: {value}. Needs to be added to " +
@@ -526,7 +533,7 @@ class TrueNasCollector(object):
 
         smarttest = GaugeMetricFamily(
             'truenas_smarttest_status',
-            'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS',
+            'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS 2=RUNNING',
             labels=['disk', 'description'])
         lifetime = CounterMetricFamily(
             'truenas_smarttest_lifetime',
@@ -537,17 +544,20 @@ class TrueNasCollector(object):
             smarttest.add_metric(
                 [disk['disk'], disk['tests'][0]['description']],
                 self._smart_test_result_enum(disk['tests'][0]['status'])
-            )  
-            lifetime.add_metric(
-                [disk['disk'], disk['tests'][0]['description']],
-                disk['tests'][0]['lifetime']
             )
+            if disk['tests'][0]['lifetime']:
+                lifetime.add_metric(
+                    [disk['disk'], disk['tests'][0]['description']],
+                    disk['tests'][0]['lifetime']
+                )
 
         return [smarttest, lifetime]
 
     def _smart_test_result_enum(self, value):
         if value == "SUCCESS":
             return 1
+        elif value == "RUNNING":
+            return 2
 
         unknown_enumerations.inc()
         print(f"Unknown/new SMART health state: {value}. Needs to be added to " +
@@ -610,12 +620,12 @@ class TrueNasCollector(object):
             elif source.split('-')[0] == 'interface':
                 sources['interface'] += [source]
 
-        request_timestamp = int(datetime.now().timestamp()) - 60
+        request_timestamp = int(datetime.now().timestamp())
         sources_metadata = []
         sources_request = {
             "stats_list": [],
             "stats-filter": {
-                "start": request_timestamp,
+                "start": request_timestamp-900,
                 "end": request_timestamp
             }
         }
@@ -876,16 +886,35 @@ class TrueNasCollector(object):
             }]
 
         data = self.request("stats/get_data", sources_request)
-
         if len(data['data']) > 0:
             for index, metric in enumerate(sources_metadata):
-                if data['data'][0][index]:
+                value = self._stats_latest_data(index, data['data'])
+                if value:
                     collectd.add_metric(
                         [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
-                        str(data['data'][0][index])
+                        value
                     )
         else:
             print("Empty response for collectd metadata for unknown reason", file=sys.stderr)
 
         return [collectd]
 
+    def _stats_latest_data(self, index, data):
+        """ find the latest data point for a given metric """
+
+        # Here's the structure of data:
+        #  "data": [ [29.0,29.98], [29.0,29.0], [29.0,29.02], [29.0,30.0] ]
+        # Each of the lists in the list represents a different timestamp with
+        # data. We reuested datapoints from the last 15 minutes.
+        # Each of the numbers in each  of those lists represents the different
+        # metrics requested. index is the one of these we want to return.
+
+        # Start at the last list (latest data), and traverse the data backwards
+        # until we find a valid data point for the metric.
+        latest = len(data) - 1
+        while latest >= 0:
+            if data[latest][index]:
+                return str(data[latest][index])
+            latest -= 1
+
+        return None
