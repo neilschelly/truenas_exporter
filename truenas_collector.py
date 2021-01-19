@@ -889,6 +889,9 @@ class TrueNasCollector(object):
         if len(data['data']) > 0:
             for index, metric in enumerate(sources_metadata):
                 value = self._stats_latest_data(index, data['data'])
+                if metric['source'].split('-')[0] == 'cputemp':
+                    """ value is in Kelvin, and it's off by a power of 10 """
+                    value = value/10 - 273.15
                 if value:
                     collectd.add_metric(
                         [metric['source'], metric['metric'], metric['submetric'], metric['metrictype']],
