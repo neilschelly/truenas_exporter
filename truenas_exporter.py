@@ -2,14 +2,12 @@
 
 from prometheus_client.core import REGISTRY
 from prometheus_client import make_wsgi_app, Summary, Counter
-from prometheus_client.exposition import ThreadingWSGIServer
-from wsgiref.simple_server import make_server
+from wsgiref.simple_server import make_server, WSGIRequestHandler
 import argparse, os, sys
 from urllib.parse import parse_qs
 import threading
 from truenas_collector import TrueNasCollector
 import requests
-
 
 REQUESTS = Summary('truenas_exporter_requests_seconds', 'Time spent processing requests')
 @REQUESTS.time()
@@ -19,6 +17,14 @@ def truenas_exporter(environ, start_fn):
 
     start_fn('404 Not Found', [])
     return [b'Usage: Metrics can be retrieved from /metrics']
+
+
+class _SilentHandler(WSGIRequestHandler):
+    """WSGI handler that does not log requests."""
+    # Blatantly stolen from client_python exposition.py
+
+    def log_message(self, format, *args):
+        """Log nothing."""
 
 if __name__ == '__main__':
 
@@ -70,5 +76,5 @@ if __name__ == '__main__':
             exit(1)
 
     REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
-    httpd = make_server('', args.port, truenas_exporter)
+    httpd = make_server('', args.port, truenas_exporter, handler_class=_SilentHandler)
     httpd.serve_forever()
