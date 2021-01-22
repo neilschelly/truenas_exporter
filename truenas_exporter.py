@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Return Prometheus metrics from querying the TrueNAS API.' +
         'Set TRUENAS_USER and TRUENAS_PASS as needed to reach the API.')
-    parser.add_argument('--port', dest='port', default=9912,
+    parser.add_argument('--port', dest='port', default='9912',
         help='Listening HTTP port for Prometheus exporter')
     parser.add_argument('--target', dest='target', required=True,
         help='Target IP/Name of TrueNAS Device')
@@ -76,5 +76,5 @@ if __name__ == '__main__':
             exit(1)
 
     REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
-    httpd = make_server('', args.port, truenas_exporter, handler_class=_SilentHandler)
+    httpd = make_server('', int(args.port), truenas_exporter, handler_class=_SilentHandler)
     httpd.serve_forever()
