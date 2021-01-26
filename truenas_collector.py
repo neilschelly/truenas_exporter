@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
-from prometheus_client import Counter
+from prometheus_client import Counter, Summary
 from datetime import datetime
 import requests, urllib3, sys
 from types import FunctionType
@@ -10,6 +10,18 @@ urllib3.disable_warnings()
 from pprint import pprint
 
 unknown_enumerations = Counter('truenas_exporter_unknown_enumerations', 'Enumerations that cannot be identified. Check the logs.')
+cloudsync_timer = Summary('truenas_exporter_cloudsync_seconds', 'Time spent making cloudsync API requests')
+alerts_timer = Summary('truenas_exporter_alerts_seconds', 'Time spent making alerts API requests')
+disks_timer = Summary('truenas_exporter_disks_seconds', 'Time spent making disks API requests')
+interfaces_timer = Summary('truenas_exporter_interfaces_seconds', 'Time spent making interfaces API requests')
+datasets_timer = Summary('truenas_exporter_datasets_seconds', 'Time spent making datasets API requests')
+pools_timer = Summary('truenas_exporter_pools_seconds', 'Time spent making pools API requests')
+replications_timer = Summary('truenas_exporter_replications_seconds', 'Time spent making replications API requests')
+snapshots_timer = Summary('truenas_exporter_snapshots_seconds', 'Time spent making snapshots APIrequests')
+systeminfo_timer = Summary('truenas_exporter_systeminfo_seconds', 'Time spent making systeminfo API requests')
+enclosure_timer = Summary('truenas_exporter_enclosure_seconds', 'Time spent making enclosure API requests')
+smarttests_timer = Summary('truenas_exporter_smarttests_seconds', 'Time spent making SMART test API requests')
+stats_timer = Summary('truenas_exporter_stats_seconds', 'Time spent making stats API requests')
 
 class TrueNasCollector(object):
     def __init__(self, target, username, password, skip_snmp = False):
@@ -49,6 +61,7 @@ class TrueNasCollector(object):
             )
         return r.json()
 
+    @cloudsync_timer.time()
     def _collect_cloudsync(self):
         cloudsync = self.request('cloudsync')
 
@@ -110,6 +123,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._cloudsync_result_enum()", file=sys.stderr)
         return 0
 
+    @alerts_timer.time()
     def _collect_alerts(self):
         alerts = self.request('alert/list')
 
@@ -135,6 +149,7 @@ class TrueNasCollector(object):
             )
         return [count]
 
+    @disks_timer.time()
     def _collect_disks(self):
         disks = self.request('disk')
 
@@ -151,6 +166,7 @@ class TrueNasCollector(object):
 
         return [metrics]
 
+    @interfaces_timer.time()
     def _collect_interfaces(self):
         if self.skip_snmp:
             return []
@@ -181,6 +197,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._interfaces_state_enum()", file=sys.stderr)
         return 0
 
+    @datasets_timer.time()
     def _collect_pool_datasets(self):
         if self.skip_snmp:
             return []
@@ -216,6 +233,7 @@ class TrueNasCollector(object):
 
         return [size,used,children]
 
+    @pools_timer.time()
     def _collect_pool(self):
         if self.skip_snmp:
             return []
@@ -295,6 +313,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._pool_health_enum()", file=sys.stderr)
         return 0
 
+    @replications_timer.time()
     def _collect_replications(self):
         replications = self.request('replication')
 
@@ -365,6 +384,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._replication_state_enum()", file=sys.stderr)
         return 0
 
+    @snapshots_timer.time()
     def _collect_pool_snapshot_tasks(self):
         tasks = self.request('pool/snapshottask')
 
@@ -401,6 +421,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._pool_snapshottask_status_enum()", file=sys.stderr)
         return 0
 
+    @systeminfo_timer.time()
     def _collect_system_info(self):
         info = self.request('system/info')
         network = self.request('network/configuration')
@@ -463,6 +484,7 @@ class TrueNasCollector(object):
 
         return [uptime, cores, memory, infometric, ha]
 
+    @enclosure_timer.time()
     def _collect_enclosure(self):
         enclosure = self.request('enclosure')
 
@@ -528,6 +550,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._enclosure_status_enum()", file=sys.stderr)
         return 0
 
+    @smarttests_timer.time()
     def _collect_smarttest(self):
         smarttests = self.request('smart/test/results')
 
@@ -564,6 +587,7 @@ class TrueNasCollector(object):
             " TrueNasCollector._smart_test_result_enum()", file=sys.stderr)
         return 0
 
+    @stats_timer.time()
     def _collect_stats(self):
         """ Return all current data from CollectD collections """
 
