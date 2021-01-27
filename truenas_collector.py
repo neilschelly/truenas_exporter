@@ -51,7 +51,7 @@ class TrueNasCollector(object):
                 headers={'Content-Type': 'application/json'},
                 verify=False,
                 json = data,
-                timeout=2
+                timeout=5
             )
         else:
             r = requests.get(
@@ -59,7 +59,7 @@ class TrueNasCollector(object):
                 auth=(self.username, self.password),
                 headers={'Content-Type': 'application/json'},
                 verify=False,
-                timeout=2
+                timeout=5
             )
         return r.json()
 

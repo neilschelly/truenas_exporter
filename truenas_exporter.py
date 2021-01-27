@@ -64,7 +64,7 @@ if __name__ == '__main__':
             auth=(username, password),
             headers={'Content-Type': 'application/json'},
             verify=False,
-            timeout=0.5
+            timeout=5
         )
         if r.status_code != 200 or r.text != '"pong"':
             print("Unable to confirm TrueNAS connectivity: " + r.text +
