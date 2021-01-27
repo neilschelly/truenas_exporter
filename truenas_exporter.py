@@ -63,7 +63,8 @@ if __name__ == '__main__':
             f'https://{target}/api/v2.0/core/ping',
             auth=(username, password),
             headers={'Content-Type': 'application/json'},
-            verify=False
+            verify=False,
+            timeout=0.5
         )
         if r.status_code != 200 or r.text != '"pong"':
             print("Unable to confirm TrueNAS connectivity: " + r.text +
