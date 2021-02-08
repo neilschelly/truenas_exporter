@@ -343,10 +343,11 @@ class TrueNasCollector(object):
                 replication['ssh_credentials']['attributes']['host'],
                 replication['transport']
             ]
-            state.add_metric(
-                labels,
-                self._replication_state_enum(replication['job']['state'])
-            )
+            if 'state' in replication['job']:
+                state.add_metric(
+                    labels,
+                    self._replication_state_enum(replication['job']['state'])
+                )
             if 'datetime' in replication['state']:
                 last_finished.add_metric(
                     labels,
