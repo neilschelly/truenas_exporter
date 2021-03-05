@@ -393,7 +393,7 @@ class TrueNasCollector(object):
 
         status = GaugeMetricFamily(
             'truenas_pool_snapshot_task_status',
-            'Pool snapshot task status: 0=UNKNOWN, 1=FINISHED, 2=RUNNING',
+            'Pool snapshot task status: 0=UNKNOWN, 1=FINISHED, 2=RUNNING, 3=ERROR',
             labels=["dataset"])
         timestamp = GaugeMetricFamily(
             'truenas_pool_snapshot_task_timestamp',
@@ -418,6 +418,8 @@ class TrueNasCollector(object):
             return 1
         elif value == 'RUNNING':
             return 2
+        elif value == 'ERROR':
+            return 3
 
         unknown_enumerations.inc()
         print(f"Unknown/new Snapshot Task state: {value}. Needs to be added to " +
