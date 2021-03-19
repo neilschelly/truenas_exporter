@@ -76,10 +76,6 @@ class TrueNasCollector(object):
             'truenas_rsynctask_state',
             'Current state of rsynctask job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS',
             labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
-        result = GaugeMetricFamily(
-            'truenas_rsynctask_result',
-            'Result of last rsynctask job: 0==UNKNOWN, 1==None',
-            labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
         elapsed = GaugeMetricFamily(
             'truenas_rsynctask_elapsed_seconds',
             'Elapsed time in seconds of last rsynctask job',
@@ -100,8 +96,14 @@ class TrueNasCollector(object):
                     [sync['desc'], sync['path'], sync['remotehost'], sync['remotepath'], sync['direction'], str(sync['enabled'])],
                     sync['job']['time_finished']['$date'] - sync['job']['time_started']['$date']
                 )
+            else:
+                elapsed.add_metric(
+                    [sync['desc'], sync['path'], sync['remotehost'], sync['remotepath'], sync['direction'], str(sync['enabled'])],
+                    1000*datetime.now().timestamp() - sync['job']['time_started']['$date']
+                )
 
-        return [progress, state, result, elapsed]
+
+        return [progress, state, elapsed]
 
     def _rsynctask_state_enum(self, value):
         if value == "RUNNING":
@@ -152,6 +154,11 @@ class TrueNasCollector(object):
                 elapsed.add_metric(
                     [sync['description'], sync['path']],
                     sync['job']['time_finished']['$date'] - sync['job']['time_started']['$date'] 
+                )
+            else:
+                elapsed.add_metric(
+                    [sync['description'], sync['path']],
+                    1000*datetime.now().timestamp() - sync['job']['time_started']['$date']
                 )
         
         return [progress, state, result, elapsed]
