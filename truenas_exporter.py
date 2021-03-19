@@ -77,5 +77,6 @@ if __name__ == '__main__':
             exit(1)
 
     REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
+    print(f"Starting listening on 0.0.0.0:{args.port} now...", file=sys.stderr)
     httpd = make_server('', int(args.port), truenas_exporter, handler_class=_SilentHandler)
     httpd.serve_forever()

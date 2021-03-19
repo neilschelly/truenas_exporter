@@ -45,23 +45,29 @@ class TrueNasCollector(object):
         return [x for x, y in TrueNasCollector.__dict__.items() if type(y) == FunctionType and y.__name__.startswith("_collect_")]
 
     def request(self, apipath, data=None):
-        if data:
-            r = requests.post(
-                f'https://{self.target}/api/v2.0/{apipath}',
-                auth=(self.username, self.password),
-                headers={'Content-Type': 'application/json'},
-                verify=False,
-                json = data,
-                timeout=10
-            )
-        else:
-            r = requests.get(
-                f'https://{self.target}/api/v2.0/{apipath}',
-                auth=(self.username, self.password),
-                headers={'Content-Type': 'application/json'},
-                verify=False,
-                timeout=10
-            )
+        try:
+            request_path = f'https://{self.target}/api/v2.0/{apipath}'
+            if data:
+                r = requests.post(
+                    request_path,
+                    auth=(self.username, self.password),
+                    headers={'Content-Type': 'application/json'},
+                    verify=False,
+                    json = data,
+                    timeout=7
+                )
+            else:
+                r = requests.get(
+                    request_path,
+                    auth=(self.username, self.password),
+                    headers={'Content-Type': 'application/json'},
+                    verify=False,
+                    timeout=7
+                )
+        except requests.exceptions.ReadTimeout as e:
+            print(f'Timeout requesting {request_path}...', file=sys.stderr)
+            print(str(e), file=sys.stderr)
+            return {}
         return r.json()
 
     @rsynctask_timer.time()
@@ -395,12 +401,21 @@ class TrueNasCollector(object):
             labels=["sources", "target", "target_system", "transport"])
 
         for replication in replications:
-            labels = [
-                ' '.join(replication['source_datasets']),
-                replication['target_dataset'],
-                replication['ssh_credentials']['attributes']['host'],
-                replication['transport']
-            ]
+            if replication['transport'] == 'SSH+NETCAT':
+                labels = [
+                    ' '.join(replication['source_datasets']),
+                    replication['target_dataset'],
+                    replication['ssh_credentials']['attributes']['host'],
+                    replication['transport']
+                ]
+            elif replication['transport'] == 'LOCAL':
+                labels = [
+                    ' '.join(replication['source_datasets']),
+                    replication['target_dataset'],
+                    'localhost',
+                    replication['transport']
+                ]
+
             if replication['job'] and 'state' in replication['job']:
                 state.add_metric(
                     labels,
@@ -973,7 +988,7 @@ class TrueNasCollector(object):
             }]
 
         data = self.request("stats/get_data", sources_request)
-        if len(data['data']) > 0:
+        if len(data) and len(data['data']) > 0:
             for index, metric in enumerate(sources_metadata):
                 value = self._stats_latest_data(index, data['data'])
                 if metric['source'].split('-')[0] == 'cputemp':
