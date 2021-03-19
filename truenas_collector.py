@@ -10,6 +10,7 @@ urllib3.disable_warnings()
 from pprint import pprint
 
 unknown_enumerations = Counter('truenas_exporter_unknown_enumerations', 'Enumerations that cannot be identified. Check the logs.')
+rsynctask_timer = Summary('truenas_exporter_rsynctask_seconds', 'Time spent making rsynctask API requests')
 cloudsync_timer = Summary('truenas_exporter_cloudsync_seconds', 'Time spent making cloudsync API requests')
 alerts_timer = Summary('truenas_exporter_alerts_seconds', 'Time spent making alerts API requests')
 disks_timer = Summary('truenas_exporter_disks_seconds', 'Time spent making disks API requests')
@@ -51,7 +52,7 @@ class TrueNasCollector(object):
                 headers={'Content-Type': 'application/json'},
                 verify=False,
                 json = data,
-                timeout=5
+                timeout=10
             )
         else:
             r = requests.get(
@@ -59,9 +60,59 @@ class TrueNasCollector(object):
                 auth=(self.username, self.password),
                 headers={'Content-Type': 'application/json'},
                 verify=False,
-                timeout=5
+                timeout=10
             )
         return r.json()
+
+    @rsynctask_timer.time()
+    def _collect_rsynctask(self):
+        rsynctask = self.request('rsynctask')
+
+        progress = GaugeMetricFamily(
+            'truenas_rsynctask_progress',
+            'Progress of last rsynctask job',
+            labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
+        state = GaugeMetricFamily(
+            'truenas_rsynctask_state',
+            'Current state of rsynctask job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS',
+            labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
+        result = GaugeMetricFamily(
+            'truenas_rsynctask_result',
+            'Result of last rsynctask job: 0==UNKNOWN, 1==None',
+            labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
+        elapsed = GaugeMetricFamily(
+            'truenas_rsynctask_elapsed_seconds',
+            'Elapsed time in seconds of last rsynctask job',
+            labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
+
+        for sync in rsynctask:
+            if sync['job']['progress']['percent']:
+                progress.add_metric(
+                    [sync['desc'], sync['path'], sync['remotehost'], sync['remotepath'], sync['direction'], str(sync['enabled'])],
+                    sync['job']['progress']['percent']
+                )
+            state.add_metric(
+                [sync['desc'], sync['path'], sync['remotehost'], sync['remotepath'], sync['direction'], str(sync['enabled'])],
+                self._rsynctask_state_enum(sync['job']['state'])
+            )
+            if sync['job']['time_finished']:
+                elapsed.add_metric(
+                    [sync['desc'], sync['path'], sync['remotehost'], sync['remotepath'], sync['direction'], str(sync['enabled'])],
+                    sync['job']['time_finished']['$date'] - sync['job']['time_started']['$date']
+                )
+
+        return [progress, state, result, elapsed]
+
+    def _rsynctask_state_enum(self, value):
+        if value == "RUNNING":
+            return 1
+        if value == "SUCCESS":
+            return 2
+
+        unknown_enumerations.inc()
+        print(f"Unknown/new rsynctask state: {value}. Needs to be added to " +
+            " TrueNasCollector._rsynctask_state_enum()", file=sys.stderr)
+        return 0
 
     @cloudsync_timer.time()
     def _collect_cloudsync(self):
