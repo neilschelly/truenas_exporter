@@ -80,7 +80,7 @@ class TrueNasCollector(object):
             labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
         state = GaugeMetricFamily(
             'truenas_rsynctask_state',
-            'Current state of rsynctask job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS',
+            'Current state of rsynctask job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==FAILED',
             labels=["description", "localpath", "remotehost", "remotepath", "direction", "enabled"])
         elapsed = GaugeMetricFamily(
             'truenas_rsynctask_elapsed_seconds',
@@ -116,6 +116,8 @@ class TrueNasCollector(object):
             return 1
         if value == "SUCCESS":
             return 2
+        if value == "FAILED":
+            return 3
 
         unknown_enumerations.inc()
         print(f"Unknown/new rsynctask state: {value}. Needs to be added to " +
