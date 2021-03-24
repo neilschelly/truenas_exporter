@@ -25,11 +25,14 @@ smarttests_timer = Summary('truenas_exporter_smarttests_seconds', 'Time spent ma
 stats_timer = Summary('truenas_exporter_stats_seconds', 'Time spent making stats API requests')
 
 class TrueNasCollector(object):
-    def __init__(self, target, username, password, skip_snmp = False):
+    def __init__(self, target, username, password, cache_smart = 24, skip_snmp = False):
         self.target = target
         self.username = username
         self.password = password
         self.skip_snmp = skip_snmp
+        self.cache_smart = 60*60*cache_smart
+        self.last_smart_result = {}
+        self.last_smart_time = 0
 
     def collect(self):
         metrics = []
@@ -54,7 +57,7 @@ class TrueNasCollector(object):
                     headers={'Content-Type': 'application/json'},
                     verify=False,
                     json = data,
-                    timeout=7
+                    timeout=15
                 )
             else:
                 r = requests.get(
@@ -62,7 +65,7 @@ class TrueNasCollector(object):
                     auth=(self.username, self.password),
                     headers={'Content-Type': 'application/json'},
                     verify=False,
-                    timeout=7
+                    timeout=15
                 )
         except requests.exceptions.ReadTimeout as e:
             print(f'Timeout requesting {request_path}...', file=sys.stderr)
@@ -632,16 +635,33 @@ class TrueNasCollector(object):
 
     @smarttests_timer.time()
     def _collect_smarttest(self):
-        smarttests = self.request('smart/test/results')
+
+        # self.cache_smart = cache_smart
+        # self.last_smart_result = {}
+        # self.last_smart_time = 0
+
+        nowstamp = int(datetime.now().timestamp())
+        if (nowstamp - self.last_smart_time) > (self.cache_smart):
+            smarttests = self.request('smart/test/results')
+            if smarttests:
+                self.last_smart_time = nowstamp
+                self.last_smart_result = smarttests
+        else:
+            smarttests = self.last_smart_result
 
         smarttest = GaugeMetricFamily(
             'truenas_smarttest_status',
             'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS 2=RUNNING',
             labels=['disk', 'description'])
+        cachetime = GaugeMetricFamily(
+            'truenas_smarttest_cache_age_seconds',
+            'Seconds since last check of the smart/tests/results API.')
         lifetime = CounterMetricFamily(
             'truenas_smarttest_lifetime',
             'TrueNAS SMART lifetime',
             labels=['disk','description'])
+
+        cachetime.add_metric([], nowstamp-self.last_smart_time)
 
         for disk in smarttests:
             smarttest.add_metric(
@@ -654,7 +674,7 @@ class TrueNasCollector(object):
                     disk['tests'][0]['lifetime']
                 )
 
-        return [smarttest, lifetime]
+        return [smarttest, cachetime, lifetime]
 
     def _smart_test_result_enum(self, value):
         if value == "SUCCESS":

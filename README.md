@@ -22,6 +22,8 @@ optional arguments:
   --target TARGET  Target IP/Name of TrueNAS Device
   --skip-snmp      Skip metrics available via SNMP - may save about a second
                    in scrape time
+  --cache-smart    Number of hours to cache SMART test results. These shouldn't
+                   change often, and they are heavy to request. Default: 24
 ```
 At a minimum, you must give it a target TrueNAS device on the command line. It
 will read the environment variables `TRUENAS_USER` and `TRUENAS_PASS` for

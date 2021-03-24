@@ -38,6 +38,9 @@ if __name__ == '__main__':
     parser.add_argument('--skip-snmp', dest='skip_snmp', default=False,
         action='store_true', help='Skip metrics available via SNMP - may ' +
         'save about a second in scrape time')
+    parser.add_argument('--cache-smart', dest='cache_smart', default=24,
+        action='store_true', help='Time to cache SMART test results for in ' +
+        'hours. These probably only update once a week.')
 
     args = parser.parse_args()
 
@@ -46,6 +49,7 @@ if __name__ == '__main__':
     password = os.environ.get('TRUENAS_PASS')
     target = args.target
     skip_snmp = args.skip_snmp
+    cache_smart = args.cache_smart
 
     if (username == None or len(username) == 0):
         print("Make sure to set TRUENAS_USER environment variable to the API " +
@@ -76,7 +80,7 @@ if __name__ == '__main__':
             parser.print_help()
             exit(1)
 
-    REGISTRY.register(TrueNasCollector(target, username, password, skip_snmp))
+    REGISTRY.register(TrueNasCollector(target, username, password, cache_smart, skip_snmp))
     print(f"Starting listening on 0.0.0.0:{args.port} now...", file=sys.stderr)
     httpd = make_server('', int(args.port), truenas_exporter, handler_class=_SilentHandler)
     httpd.serve_forever()
