@@ -200,7 +200,7 @@ class TrueNasCollector(object):
     def _cloudsync_result_enum(self, value):
         if value is None:
             return 1
-        if value is "NEVER":
+        if value == "NEVER":
             return 2
 
         unknown_enumerations.inc()
