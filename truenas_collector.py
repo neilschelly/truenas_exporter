@@ -137,11 +137,11 @@ class TrueNasCollector(object):
             labels=["description", "path"])
         state = GaugeMetricFamily(
             'truenas_cloudsync_state',
-            'Current state of CloudSync job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS',
+            'Current state of CloudSync job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==NEVER',
             labels=["description", "path"])
         result = GaugeMetricFamily(
             'truenas_cloudsync_result',
-            'Result of last CloudSync job: 0==UNKNOWN, 1==None',
+            'Result of last CloudSync job: 0==UNKNOWN, 1==None, 2==NEVER',
             labels=["description", "path"])
         elapsed = GaugeMetricFamily(
             'truenas_cloudsync_elapsed_seconds',
@@ -149,29 +149,38 @@ class TrueNasCollector(object):
             labels=["description", "path"])
 
         for sync in cloudsync:
-            if sync['job']['progress']:
+            if sync['job']:
                 progress.add_metric(
                     [sync['description'], sync['path']],
                     sync['job']['progress']['percent']
                 )
-            state.add_metric(
-                [sync['description'], sync['path']],
-                self._cloudsync_state_enum(sync['job']['state'])
-            )
-            result.add_metric(
-                [sync['description'], sync['path']],
-                self._cloudsync_result_enum(sync['job']['result'])
-            )
-            if sync['job']['time_finished']:
-                elapsed.add_metric(
+                state.add_metric(
                     [sync['description'], sync['path']],
-                    sync['job']['time_finished']['$date'] - sync['job']['time_started']['$date'] 
+                    self._cloudsync_state_enum(sync['job']['state'])
                 )
+                result.add_metric(
+                    [sync['description'], sync['path']],
+                    self._cloudsync_result_enum(sync['job']['result'])
+                )
+                if sync['job']['time_finished']:
+                    elapsed.add_metric(
+                        [sync['description'], sync['path']],
+                        sync['job']['time_finished']['$date'] - sync['job']['time_started']['$date'] 
+                    )
+                else:
+                    elapsed.add_metric(
+                        [sync['description'], sync['path']],
+                        1000*datetime.now().timestamp() - sync['job']['time_started']['$date']
+                    )
             else:
-                elapsed.add_metric(
+                state.add_metric(
                     [sync['description'], sync['path']],
-                    1000*datetime.now().timestamp() - sync['job']['time_started']['$date']
+                    self._cloudsync_state_enum("NEVER")
                 )
+                result.add_metric(
+                    [sync['description'], sync['path']],
+                    self._cloudsync_result_enum("NEVER")
+                )                
         
         return [progress, state, result, elapsed]
 
@@ -180,6 +189,8 @@ class TrueNasCollector(object):
             return 1
         if value == "SUCCESS":
             return 2
+        if value == "NEVER":
+            return 3
 
         unknown_enumerations.inc()
         print(f"Unknown/new CloudSync state: {value}. Needs to be added to " +
@@ -189,6 +200,8 @@ class TrueNasCollector(object):
     def _cloudsync_result_enum(self, value):
         if value is None:
             return 1
+        if value is "NEVER":
+            return 2
 
         unknown_enumerations.inc()
         print(f"Unknown/new CloudSync result: {value}. Needs to be added to " +
