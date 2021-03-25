@@ -149,10 +149,11 @@ class TrueNasCollector(object):
             labels=["description", "path"])
 
         for sync in cloudsync:
-            progress.add_metric(
-                [sync['description'], sync['path']],
-                sync['job']['progress']['percent']
-            )
+            if sync['job']['progress']:
+                progress.add_metric(
+                    [sync['description'], sync['path']],
+                    sync['job']['progress']['percent']
+                )
             state.add_metric(
                 [sync['description'], sync['path']],
                 self._cloudsync_state_enum(sync['job']['state'])
