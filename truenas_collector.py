@@ -1023,7 +1023,7 @@ class TrueNasCollector(object):
                 "metrictype": "GAUGE"
             }]
 
-        data = self.request("stats/get_data", sources_request)
+        data = self._stats_request(sources_request)
         if len(data) and len(data['data']) > 0:
             for index, metric in enumerate(sources_metadata):
                 value = self._stats_latest_data(index, data['data'])
@@ -1039,6 +1039,49 @@ class TrueNasCollector(object):
             print("Empty response for collectd metadata for unknown reason", file=sys.stderr)
 
         return [collectd]
+
+    def _stats_request(self, sources_request):
+        """ Make the API call(s) for stats"""
+
+        # If souces_request includes too many stats_list items in it, like if
+        # you have a lot of datasets, a single call to the API will fail. The
+        # middleware on the TrueNAS will run `rrdtool` with so many arguments
+        # that it will get an 'Argument list too long' error.
+
+        # This function will break it up into multiple calls when over 1200
+        # stats_list items, and recombine them as if they came from a single
+        # call.
+
+        # No way around it, if this has to make multiple calls, it will be slow
+
+        index = 0
+        max_items = 1600
+        return_data = {'data':[]}
+
+        while len(sources_request['stats_list']) > index:
+            this_sources_request = {
+                "stats_list": sources_request['stats_list'][index:index+max_items],
+                "stats-filter": sources_request['stats-filter']
+            }
+            if this_sources_request['stats_list']:
+                try:
+                    data = self.request("stats/get_data", this_sources_request)
+                    response = data['data']
+                except KeyError as e:
+                    print("Invalid response from TrueNAS API:")
+                    print(data)
+                    continue
+                if return_data['data']:
+                    # New metrics are appended to lists from old metrics
+                    # See _stats_latest_data comments for an explanation of how
+                    # this list of lists needs to look in the end
+                    return_data['data'] = [i[0]+i[1] for i in list(zip(return_data['data'],response))]
+                else:
+                    # First data returns needs to create the return_data['data'] structure
+                    return_data['data'] = response
+            index += max_items
+
+        return return_data
 
     def _stats_latest_data(self, index, data):
         """ find the latest data point for a given metric """
