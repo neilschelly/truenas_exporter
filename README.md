@@ -39,3 +39,25 @@ by skipping metrics that can also be easily retrieved via SNMP.
 * `make build` will create a container.
 * `TARGET=truenas.example.net make run` will run it, targeting a TrueNAS device
   called truenas.example.net.
+
+## Bugs
+
+### Bug in core.jobs call Makes Job Information Disappear
+
+Many API calls will internally use the core.get_jobs API function to get a list
+of all jobs that run on the TrueNAS, and they will pull the latest job status
+from that. That API endpoint will only return 999 records. This is the same
+function that underlies the `/api/v2.0/core/get_jobs` REST endpoint, and it will
+respond with all types of jobs, like periodic snapshots, cron jobs, cloudsync
+jobs, certificate renewals, AD cache refreshes, update/download checks, etc.
+
+If you have a task/job that runs once a week, it might have last run so long ago
+that it is no longer visible in these results. If you have a cron job that runs
+every minute, that will be 1,440 entries a day just for that cron job. At some
+point, you won't be able to see jobs anymore.
+
+In the UI, I have seen Cloud Sync jobs that suddenly have `NOT RUN SINCE LAST
+BOOT` as their Status, and this is why. The job status cannot be found in the
+last 999 jobs completed. The `core/get_jobs` API supports offsets and limits,
+but no combination will get you past the last 999 tasks. Regardless of that,
+none of the internal calls to it are actually taking advantage of that anyway.

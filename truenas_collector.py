@@ -1055,7 +1055,7 @@ class TrueNasCollector(object):
         # No way around it, if this has to make multiple calls, it will be slow
 
         index = 0
-        max_items = 1500
+        max_items = 1200
         return_data = {'data':[]}
 
         while len(sources_request['stats_list']) > index:
