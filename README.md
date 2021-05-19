@@ -13,18 +13,24 @@ failovers, etc will "fix" the installation and remove it.
 ```shell
 $ ./truenas_exporter.py --help
 usage: truenas_exporter.py [-h] [--port PORT] --target TARGET [--skip-snmp]
+                           [--cache-smart] [--skip-df-regex SKIP_DF_REGEX]
 
-Return Prometheus metrics from querying the TrueNAS API
+Return Prometheus metrics from querying the TrueNAS API.Set TRUENAS_USER and
+TRUENAS_PASS as needed to reach the API.
 
 optional arguments:
-  -h, --help       show this help message and exit
-  --port PORT      Listening HTTP port for Prometheus exporter
-  --target TARGET  Target IP/Name of TrueNAS Device
-  --skip-snmp      Skip metrics available via SNMP - may save about a second
-                   in scrape time
-  --cache-smart    Number of hours to cache SMART test results. These shouldn't
-                   change often, and they are heavy to request. Default: 24
+  -h, --help            show this help message and exit
+  --port PORT           Listening HTTP port for Prometheus exporter
+  --target TARGET       Target IP/Name of TrueNAS Device
+  --skip-snmp           Skip metrics available via SNMP - may save about a
+                        second in scrape time
+  --cache-smart         Time to cache SMART test results for in hours. These
+                        probably only update once a week.
+  --skip-df-regex SKIP_DF_REGEX
+                        Regular expression that will match filesystems to skip
+                        for costlydf metrics.
 ```
+
 At a minimum, you must give it a target TrueNAS device on the command line. It
 will read the environment variables `TRUENAS_USER` and `TRUENAS_PASS` for
 authenticating to the API. For TrueNAS devices, the `TRUENAS_USER` must be
@@ -33,6 +39,13 @@ on for scrape requests.
 
 The `--skip-snmp` option should shave about a second or two off the scrape time
 by skipping metrics that can also be easily retrieved via SNMP.
+
+If you have a lot of filesystems mounted, then the stats collector that pulls
+information on filesystems from collectd can get really slow. Use the
+`--skip-df-regex` option to give a regular expression for any filesystems' df
+metrics that should be skipped. The string you're matching against will be
+something like `df-mnt-tank-path-to-mount-point`. Note that the slashes are
+replaced with dashes in "path-to-mount-point."
 
 ### Docker Container
 

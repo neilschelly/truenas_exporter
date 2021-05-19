@@ -3,7 +3,7 @@
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 from prometheus_client import Counter, Summary
 from datetime import datetime
-import requests, urllib3, sys
+import requests, urllib3, sys, re
 from types import FunctionType
 urllib3.disable_warnings()
 
@@ -25,12 +25,13 @@ smarttests_timer = Summary('truenas_exporter_smarttests_seconds', 'Time spent ma
 stats_timer = Summary('truenas_exporter_stats_seconds', 'Time spent making stats API requests')
 
 class TrueNasCollector(object):
-    def __init__(self, target, username, password, cache_smart = 24, skip_snmp = False):
+    def __init__(self, target, username, password, cache_smart = 24, skip_snmp = False, skip_df_regex = None):
         self.target = target
         self.username = username
         self.password = password
         self.skip_snmp = skip_snmp
         self.cache_smart = 60*60*cache_smart
+        self.skip_df_regex = skip_df_regex
         self.last_smart_result = {}
         self.last_smart_time = 0
 
@@ -729,6 +730,11 @@ class TrueNasCollector(object):
 
         stats = self.request('stats/get_sources')
 
+        skip_df_regex = None
+
+        if self.skip_df_regex:
+            skip_df_regex = re.compile(self.skip_df_regex)
+
         collectd = GaugeMetricFamily(
             'truenas_collectd',
             'TrueNAS CollectD Metrics',
@@ -809,17 +815,19 @@ class TrueNasCollector(object):
                     }]
         for source in sources['df']:
             for metric in ['df_complex-free', 'df_complex-reserved', 'df_complex-used']:
-                sources_request['stats_list'] += [{
-                    "source": source,
-                    "type": metric,
-                    "dataset": "value"
-                }]
-                sources_metadata += [{
-                    "source": source,
-                    "metric": metric,
-                    "submetric": "value",
-                    "metrictype": "GAUGE"
-                }]
+                if self.skip_df_regex and not skip_df_regex.search(source):
+                    # Only get these metrics if they aren't in the optional skip_df_regex
+                    sources_request['stats_list'] += [{
+                        "source": source,
+                        "type": metric,
+                        "dataset": "value"
+                    }]
+                    sources_metadata += [{
+                        "source": source,
+                        "metric": metric,
+                        "submetric": "value",
+                        "metrictype": "GAUGE"
+                    }]
         for source in sources['disk']:
             disk_list += [source.split('-')[1]]
             for metric in ['disk_octets', 'disk_ops', 'disk_time']:

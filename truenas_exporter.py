@@ -41,6 +41,9 @@ if __name__ == '__main__':
     parser.add_argument('--cache-smart', dest='cache_smart', default=24,
         action='store_true', help='Time to cache SMART test results for in ' +
         'hours. These probably only update once a week.')
+    parser.add_argument('--skip-df-regex', dest='skip_df_regex', default=None,
+        help='Regular expression that will match filesystems to skip for costly' +
+        'df metrics.')
 
     args = parser.parse_args()
 
@@ -50,6 +53,7 @@ if __name__ == '__main__':
     target = args.target
     skip_snmp = args.skip_snmp
     cache_smart = args.cache_smart
+    skip_df_regex = args.skip_df_regex
 
     if (username == None or len(username) == 0):
         print("Make sure to set TRUENAS_USER environment variable to the API " +
@@ -80,7 +84,7 @@ if __name__ == '__main__':
             parser.print_help()
             exit(1)
 
-    REGISTRY.register(TrueNasCollector(target, username, password, cache_smart, skip_snmp))
+    REGISTRY.register(TrueNasCollector(target, username, password, cache_smart, skip_snmp, skip_df_regex))
     print(f"Starting listening on 0.0.0.0:{args.port} now...", file=sys.stderr)
     httpd = make_server('', int(args.port), truenas_exporter, handler_class=_SilentHandler)
     httpd.serve_forever()
