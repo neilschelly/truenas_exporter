@@ -502,10 +502,10 @@ class TrueNasCollector(object):
             )
             try:
                 if task['state']['datetime']:
-                timestamp.add_metric(
-                    [task['dataset']],
-                    task['state']['datetime']['$date']
-                )
+                    timestamp.add_metric(
+                        [task['dataset']],
+                        task['state']['datetime']['$date']
+                    )
             except KeyError:
                 pass
 
