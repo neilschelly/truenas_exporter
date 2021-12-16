@@ -515,6 +515,8 @@ class TrueNasCollector(object):
             return 2
         elif value == 'ERROR':
             return 3
+        elif value == 'PENDING':
+            return 4
 
         unknown_enumerations.inc()
         print(f"Unknown/new Snapshot Task state: {value}. Needs to be added to " +
