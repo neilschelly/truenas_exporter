@@ -500,11 +500,14 @@ class TrueNasCollector(object):
                 [task['dataset']],
                 self._pool_snapshottask_status_enum(task['state']['state'])
             )
-            if task['state']['datetime']:
+            try:
+                if task['state']['datetime']:
                 timestamp.add_metric(
                     [task['dataset']],
                     task['state']['datetime']['$date']
                 )
+            except KeyError:
+                pass
 
         return [status, timestamp]
 
