@@ -673,7 +673,7 @@ class TrueNasCollector(object):
 
         smarttest = GaugeMetricFamily(
             'truenas_smarttest_status',
-            'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS 2=RUNNING',
+            'TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS 2=RUNNING 3=FAILED',
             labels=['disk', 'description'])
         cachetime = GaugeMetricFamily(
             'truenas_smarttest_cache_age_seconds',
@@ -703,6 +703,8 @@ class TrueNasCollector(object):
             return 1
         elif value == "RUNNING":
             return 2
+        elif value == "FAILED":
+            return 3
 
         unknown_enumerations.inc()
         print(f"Unknown/new SMART health state: {value}. Needs to be added to " +
