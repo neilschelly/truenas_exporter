@@ -356,37 +356,47 @@ class TrueNasCollector(object):
             )
             for topology in pool['topology']['data']:
                 for disk in topology['children']:
+                    label = "None"
+                    if 'disk' in disk:
+                        label = disk['disk']
+                    elif 'path' in disk:
+                        label = disk['path']
                     disk_status.add_metric(
-                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "false"],
+                        [pool['name'], pool['path'], label, "false"],
                         self._pool_health_enum(disk['status'])
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "read"],
+                        [pool['name'], pool['path'], label, "read"],
                         disk['stats']['read_errors']
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "write"],
+                        [pool['name'], pool['path'], label, "write"],
                         disk['stats']['write_errors']
                     )
                     disk_errors.add_metric(
-                        [pool['name'], pool['path'], disk['disk'] or disk['path'], "checksum"],
+                        [pool['name'], pool['path'], label, "checksum"],
                         disk['stats']['checksum_errors']
                     )
             for disk in pool['topology']['spare']:
+                label = "None"
+                if 'disk' in disk:
+                    label = disk['disk']
+                elif 'path' in disk:
+                    label = disk['path']
                 disk_status.add_metric(
-                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "true"],
+                    [pool['name'], pool['path'], label, "true"],
                     self._pool_health_enum(disk['status'])
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "read"],
+                    [pool['name'], pool['path'], label, "read"],
                     disk['stats']['read_errors']
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "write"],
+                    [pool['name'], pool['path'], label, "write"],
                     disk['stats']['write_errors']
                 )
                 disk_errors.add_metric(
-                    [pool['name'], pool['path'], disk['disk'] or disk['path'], "checksum"],
+                    [pool['name'], pool['path'], label, "checksum"],
                     disk['stats']['checksum_errors']
                 )
 
@@ -395,6 +405,8 @@ class TrueNasCollector(object):
     def _pool_health_enum(self, value):
         if value == "ONLINE":
             return 1
+        if value == "UNAVAIL":
+            return 2
 
         unknown_enumerations.inc()
         print(f"Unknown/new Pool or Disk state: {value}. Needs to be added to " +
@@ -448,7 +460,7 @@ class TrueNasCollector(object):
                     labels,
                     replication['state']['datetime']['$date']
                 )
-            if 'time_started' in replication['job']:
+            if replication['job'] is not None and 'time_started' in replication['job']:
                 if replication['job']['time_finished']:
                     elapsed.add_metric(
                         labels,
@@ -459,7 +471,7 @@ class TrueNasCollector(object):
                         labels,
                         1000*datetime.now().timestamp() - replication['job']['time_started']['$date']
                     )
-            if replication['job']['progress']['percent']:
+            if replication['job'] is not None and replication['job']['progress']['percent']:
                 progress.add_metric(
                     labels,
                     replication['job']['progress']['percent']
@@ -605,12 +617,12 @@ class TrueNasCollector(object):
         for device in enclosure:
             devicename = device['name']
             devicemodel = device['model']
-
             for element in device['elements']:
-                metrictype = element['name']
-                metricdevice = element['descriptor']
-
-                for leaf in element['elements']:
+                metrictype = element
+                element = device['elements'][element]
+                for leaf in element:
+                    metricdevice = f"{element} {leaf}"
+                    leaf = element[leaf]
                     metricelement = leaf['descriptor']
 
                     health_metrics.add_metric(
