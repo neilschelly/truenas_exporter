@@ -361,6 +361,7 @@ class TrueNasCollector(object):
                         label = disk['disk']
                     elif 'path' in disk:
                         label = disk['path']
+                    label = label or "unlabelled"
                     disk_status.add_metric(
                         [pool['name'], pool['path'], label, "false"],
                         self._pool_health_enum(disk['status'])
@@ -383,6 +384,7 @@ class TrueNasCollector(object):
                     label = disk['disk']
                 elif 'path' in disk:
                     label = disk['path']
+                label = label or "unlabelled"
                 disk_status.add_metric(
                     [pool['name'], pool['path'], label, "true"],
                     self._pool_health_enum(disk['status'])
@@ -617,12 +619,12 @@ class TrueNasCollector(object):
         for device in enclosure:
             devicename = device['name']
             devicemodel = device['model']
-            for element in device['elements']:
-                metrictype = element
-                element = device['elements'][element]
-                for leaf in element:
-                    metricdevice = f"{element} {leaf}"
-                    leaf = element[leaf]
+            for elementname in device['elements']:
+                metrictype = elementname
+                element = device['elements'][elementname]
+                for leafname in element:
+                    metricdevice = f"{elementname} {leafname}"
+                    leaf = element[leafname]
                     metricelement = leaf['descriptor']
 
                     health_metrics.add_metric(
