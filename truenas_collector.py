@@ -194,6 +194,8 @@ class TrueNasCollector(object):
             return 3
         if value == "FAILED":
             return 4
+        if value == "ABORTED":
+            return 5
 
         unknown_enumerations.inc()
         print(f"Unknown/new CloudSync state: {value}. Needs to be added to " +
@@ -409,6 +411,12 @@ class TrueNasCollector(object):
             return 1
         if value == "UNAVAIL":
             return 2
+        if value == "DEGRADED":
+            return 3
+        if value == "REMOVED":
+            return 4
+        if value == "OFFLINE":
+            return 5
 
         unknown_enumerations.inc()
         print(f"Unknown/new Pool or Disk state: {value}. Needs to be added to " +
