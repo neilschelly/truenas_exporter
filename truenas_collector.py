@@ -57,7 +57,7 @@ class TrueNasCollector(object):
                     auth=(self.username, self.password),
                     headers={'Content-Type': 'application/json'},
                     verify=False,
-                    json = data,
+                    json=data,
                     timeout=15
                 )
             else:
@@ -70,6 +70,11 @@ class TrueNasCollector(object):
                 )
         except requests.exceptions.ReadTimeout as e:
             print(f'Timeout requesting {request_path}...', file=sys.stderr)
+            print(str(e), file=sys.stderr)
+            return {}
+        except requests.exceptions.ConnectionError as e:
+            print(f'Connection error requesting {request_path}...',
+                  file=sys.stderr)
             print(str(e), file=sys.stderr)
             return {}
         return r.json()
