@@ -676,6 +676,8 @@ class TrueNasCollector(object):
             return 2
         elif value == "Critical":
             return 3
+        elif value == "Unsupported":
+            return 4
 
         unknown_enumerations.inc()
         print(f"Unknown/new enclosure health state: {value}. Needs to be added to " +
@@ -713,15 +715,16 @@ class TrueNasCollector(object):
         cachetime.add_metric([], nowstamp-self.last_smart_time)
 
         for disk in smarttests:
-            smarttest.add_metric(
-                [disk['disk'], disk['tests'][0]['description']],
-                self._smart_test_result_enum(disk['tests'][0]['status'])
-            )
-            if disk['tests'][0]['lifetime']:
-                lifetime.add_metric(
+            if (len(disk['tests']) > 0):
+                smarttest.add_metric(
                     [disk['disk'], disk['tests'][0]['description']],
-                    disk['tests'][0]['lifetime']
+                    self._smart_test_result_enum(disk['tests'][0]['status'])
                 )
+                if disk['tests'][0]['lifetime']:
+                    lifetime.add_metric(
+                        [disk['disk'], disk['tests'][0]['description']],
+                        disk['tests'][0]['lifetime']
+                    )
 
         return [smarttest, cachetime, lifetime]
 
