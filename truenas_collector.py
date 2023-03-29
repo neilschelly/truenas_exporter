@@ -311,6 +311,14 @@ class TrueNasCollector(object):
             'truenas_pool_dataset_children',
             'Number of children inside dataset',
             labels=["name", "pool", "type"])
+        encrypted = GaugeMetricFamily(
+            'truenas_pool_dataset_encrypted',
+            'Dataset encryption enabled?',
+            labels=["name", "pool", "type"])
+        locked = GaugeMetricFamily(
+            'truenas_pool_dataset_locked',
+            'Dataset encryption locked?',
+            labels=["name", "pool", "type"])
 
         for dataset in datasets:
             size.add_metric(
@@ -325,8 +333,16 @@ class TrueNasCollector(object):
                 [dataset['name'], dataset['pool'], dataset['type']],
                 len(dataset['children'])
             )
+            encrypted.add_metric(
+                [dataset['name'], dataset['pool'], dataset['type']],
+                int(dataset['encrypted'])
+            )
+            locked.add_metric(
+                [dataset['name'], dataset['pool'], dataset['type']],
+                int(dataset['locked'])
+            )
 
-        return [size,used,children]
+        return [size,used,children,encrypted,locked]
 
     @pools_timer.time()
     def _collect_pool(self):
