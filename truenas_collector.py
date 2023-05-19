@@ -143,7 +143,7 @@ class TrueNasCollector(object):
             labels=["description", "path"])
         state = GaugeMetricFamily(
             'truenas_cloudsync_state',
-            'Current state of CloudSync job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==NEVER, 4==FAILED',
+            'Current state of CloudSync job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==NEVER, 4==FAILED, 5==ABORTED, 6==WAITING',
             labels=["description", "path"])
         result = GaugeMetricFamily(
             'truenas_cloudsync_result',
@@ -201,6 +201,8 @@ class TrueNasCollector(object):
             return 4
         if value == "ABORTED":
             return 5
+        if value == "WAITING":
+            return 6
 
         unknown_enumerations.inc()
         print(f"Unknown/new CloudSync state: {value}. Needs to be added to " +
