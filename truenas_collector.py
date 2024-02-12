@@ -156,10 +156,16 @@ class TrueNasCollector(object):
 
         for sync in cloudsync:
             if sync['job']:
-                progress.add_metric(
-                    [sync['description'], sync['path']],
-                    sync['job']['progress']['percent']
-                )
+                if sync['job']['progress']['percent']:
+                    progress.add_metric(
+                        [sync['description'], sync['path']],
+                        sync['job']['progress']['percent']
+                    )
+                else:
+                    progress.add_metric(
+                        [sync['description'], sync['path']],
+                        -1
+                    )
                 state.add_metric(
                     [sync['description'], sync['path']],
                     self._cloudsync_state_enum(sync['job']['state'])
