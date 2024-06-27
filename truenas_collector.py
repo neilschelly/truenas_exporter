@@ -696,7 +696,7 @@ class TrueNasCollector(object):
         return [health_metrics, health_status]
 
     def _enclosure_status_enum(self, value):
-        if value == "OK":
+        if value == "OK" or value == "OK, Swapped":
             return 1
         elif value == "Unknown" or value == "Not installed":
             return 2
