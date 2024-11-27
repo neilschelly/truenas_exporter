@@ -1119,7 +1119,7 @@ class TrueNasCollector(object):
     def _stats_request(self, sources_request):
         """ Make the API call(s) for stats"""
 
-        # If souces_request includes too many stats_list items in it, like if
+        # If sources_request includes too many stats_list items in it, like if
         # you have a lot of datasets, a single call to the API will fail. The
         # middleware on the TrueNAS will run `rrdtool` with so many arguments
         # that it will get an 'Argument list too long' error.

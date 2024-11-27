@@ -4,7 +4,15 @@ The TrueNAS devices can be monitored by SNMP and CollectD. The CollectD stuff is
 only really visible in the UI in RRD graphs, unless you install the [collectd
 exporter](https://github.com/prometheus/collectd_exporter) onto the devices.
 That works, but is unreliable, because many things like system upgrades, HA
-failovers, etc will "fix" the installation and remove it.
+failovers, etc will "fix" the installation and remove it. This exporter aims
+to fill that gap by monitoring TrueNAS devices via their API.
+
+**Important Note:**
+We have used this on TrueNAS releases from 11.x up to 13.0 on TrueNAS X20
+hardware. It has been mostly derived from reverse-engineering the API. The
+TrueNAS docs do tell you how to query things, but not necessarily the
+structure and meaning of the responses. It has worked well enough for us to
+make use of things for a few years.
 
 ## Usage
 
@@ -28,7 +36,7 @@ optional arguments:
                         probably only update once a week.
   --skip-df-regex SKIP_DF_REGEX
                         Regular expression that will match filesystems to skip
-                        for costlydf metrics.
+                        for costly df metrics.
 ```
 
 At a minimum, you must give it a target TrueNAS device on the command line. It
@@ -74,3 +82,20 @@ BOOT` as their Status, and this is why. The job status cannot be found in the
 last 999 jobs completed. The `core/get_jobs` API supports offsets and limits,
 but no combination will get you past the last 999 tasks. Regardless of that,
 none of the internal calls to it are actually taking advantage of that anyway.
+
+### Slow-Down of TrueNAS Device Scraping
+
+The queries that pull data from CollectD can pile up if they hang or never
+complete for some reason. On the TrueNAS, you can see a lot fo these
+processes running like:
+
+```
+% ps ax|grep 'rrdtool xport'
+  100  -  I          0:00.23 /usr/local/bin/rrdtool xport --daemon unix:/var/run/rrdcached.sock --json --start 1616227509 --end 1616228409 --step 10 DEF:xxx0=/var/db/collectd/rrd/localhost//aggregation-cpu-average/cpu-idle.rrd:value:AVERAGE XPORT:xxx0:aggregation-cpu-average/cpu-idle DEF:xxx1=/var/db/collectd/rrd/localhost//aggregation-cpu-ave
+  333  -  I          0:00.23 /usr/local/bin/rrdtool xport --daemon unix:/var/run/rrdcached.sock --json --start 1616227536 --end 1616228436 --step 10 DEF:xxx0=/var/db/collectd/rrd/localhost//aggregation-cpu-average/cpu-idle.rrd:value:AVERAGE XPORT:xxx0:aggregation-cpu-average/cpu-idle DEF:xxx1=/var/db/collectd/rrd/localhost//aggregation-cpu-ave
+  414  -  I          0:00.26 /usr/local/bin/rrdtool xport --daemon unix:/var/run/rrdcached.sock --json --start 1616227556 --end 1616228456 --step 10 DEF:xxx0=/var/db/collectd/rrd/localhost//aggregation-cpu-average/cpu-idle.rrd:value:AVERAGE XPORT:xxx0:aggregation-cpu-average/cpu-idle DEF:xxx1=/var/db/collectd/rrd/localhost//aggregation-cpu-ave
+<SNIP>
+```
+
+If you see this happen, then you can kill off all the `rrdtool xport` runs
+and restore normal performance.
