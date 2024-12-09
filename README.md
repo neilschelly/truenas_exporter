@@ -61,7 +61,61 @@ replaced with dashes in "path-to-mount-point."
 * `TARGET=truenas.example.net make run` will run it, targeting a TrueNAS device
   called truenas.example.net.
 
+### Metrics
+
+|| Metric name || Type || Description ||
+| truenas_exporter_unknown_enumerations | Counter | Enumerations that cannot be identified. Check the logs. |
+| truenas_exporter_SOMETHING_seconds | Summary | Time spent making _SOMETHING_ API requests. |
+| truenas_rsynctask_progress | Gauge | Progress of last rsynctask job |
+| truenas_rsynctask_state | Gauge | Current state of rsynctask job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==FAILED |
+| truenas_rsynctask_elapsed_seconds | Gauge | Elapsed time in seconds of last rsynctask job |
+| truenas_cloudsync_progress | Gauge | Progress of last CloudSync job |
+| truenas_cloudsync_state | Gauge | Current state of CloudSync job: 0==UNKNOWN, 1==RUNNING, 2==SUCCESS, 3==NEVER, 4==FAILED, 5==ABORTED, 6==WAITING |
+| truenas_cloudsync_result | Gauge | Result of last CloudSync job: 0==UNKNOWN, 1==None, 2==NEVE |
+| truenas_cloudsync_elapsed_seconds | Gauge | Elapsed time in seconds of last CloudSync jo |
+| truenas_alerts | Gauge | Current count of un-dismissed alerts |
+| truenas_disk_bytes | Gauge | Disk size/info inventory |
+| truenas_interface_state | Gauge | Interface state/info inventory:  0==UNKNOWN, 1==LINK_STATE_UP, 2==LINK_STATE_DOWN |
+| truenas_pool_dataset_max_bytes | Gauge | Dataset size in bytes |
+| truenas_pool_dataset_used_bytes | Gauge | Dataset used in bytes |
+| truenas_pool_dataset_children | Gauge | Number of children inside dataset |
+| truenas_pool_dataset_encrypted | Gauge | Dataset encryption enabled? |
+| truenas_pool_dataset_locked | Gauge | Dataset encryption locked? |
+| truenas_pool_status | Gauge | Pool status: 0=UNKNOWN, 1=ONLINE |
+| truenas_pool_healthy | Gauge | Pool health |
+| truenas_pool_disk_status | Gauge | Status of disk in pool: 0=UNKNOWN, 1=ONLINE |
+| truenas_pool_disk_errors | Counter | Count of errors on disk in pool |
+| truenas_replication_state | Gauge | Current replication state: 0=UNKNOWN 1=SUCCESS 2=RUNNING 3=FAILED 4=WAITING |
+| truenas_replication_last_finished | Gauge | Replication last finished |
+| truenas_replication_last_elapsed | Gauge | Last replication elapsed milliseconds |
+| truenas_replication_progress | Gauge | Current replication progress |
+| truenas_pool_snapshot_task_status | Gauge | Pool snapshot task status: 0=UNKNOWN, 1=FINISHED, 2=RUNNING, 3=ERROR, 4=PENDING, 5=HOLD |
+| truenas_pool_snapshot_task_timestamp | Gauge | Pool snapshot task timestamp |
+| truenas_uptime | Counter | TrueNAS uptime |
+| truenas_cores | Gauge | TrueNAS CPU core count |
+| truenas_memory | Gauge | TrueNAS physical memory |
+| truenas | Info | TrueNAS Information: hostname, version, serial, serial_ha, model, product, manufacturer |
+| truenas_ha | Gauge | TrueNAS High Availability Controller Status: 0=N/A 1=hostname_1 master 2=hostname_2 master |
+| truenas_enclosure_health | Gauge | TrueNAS enclosure device metrics |
+| truenas_enclosure_status | Gauge | TrueNAS enclosure device health 0=UNKNOWN, 1=OK, 2=Unknown/Not-installed 3=Critical |
+| truenas_smarttest_status | Gauge | TrueNAS SMART test result: 0=UNKNOWN 1=SUCCESS 2=RUNNING 3=FAILED |
+| truenas_smarttest_cache_age_seconds | Gauge | Seconds since last check of the smart/tests/results API. |
+| truenas_smarttest_lifetime | Counter | truenas_smarttest_lifetime |
+| truenas_collectd | Gauge | TrueNAS CollectD Metrics |
+
 ## Bugs
+
+### Unknown Enumerations
+
+There's a metric here that is called `truenas_exporter_unknown_enumerations`. I
+was unable to find any documented list of the possible enumerated values that
+can come back from several of the API calls. I did try to spelunk in the
+`middlewared` modules for this, but was unable to come to a complete list.
+
+For that reason, this metric will count the number of times a new number comes
+back from the API to indicate some status that isn't recognized. If you run into
+these, please submit a PR or at least report the error message (exactly) and
+what the status of that job, task, or whatever is.
 
 ### Bug in core.jobs call Makes Job Information Disappear
 
@@ -98,4 +152,21 @@ processes running like:
 ```
 
 If you see this happen, then you can kill off all the `rrdtool xport` runs
-and restore normal performance.
+and restore normal performance. You could also put this in a cron job:
+
+```bash
+#!/bin/bash
+
+# Get list of processes, listing elapsed_time, pid, and command
+# Filter to only the `rrdtool xport` ones
+# Use awk to only consider the ones where the command begins with `rrdtool` so we don't consider the `grep` command
+# Use awk to only consider the ones that have been running more than 600s (10m)
+# Print list of pids, then kill them all
+ps ax -o etimes,pid,command | grep 'rrdtool xport' | awk '$3 == "rrdtool" && $1 > 600 { print $2 }' | xargs kill
+```
+
+### Overall Performance
+
+It's tough to get all this stuff from the API on-demand. It might be better to
+just repeatedly collect the metrics and report the most recent data each time
+the `/metrics` endpoint is requested.
