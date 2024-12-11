@@ -652,7 +652,7 @@ class TrueNasCollector(object):
             labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
         health_status = GaugeMetricFamily(
             'truenas_enclosure_status',
-            'TrueNAS enclosure device health 0=UNKNOWN, 1=OK, 2=Unknown/Not-installed 3=Critical',
+            'TrueNAS enclosure device health 0=UNKNOWN, 1=OK or (OK, Swapped), 2=Unknown/Not-installed 3=Critical, 4=Unsupported, 5=(Not Installed, Swapped)',
             labels=["devicename", "devicemodel", "metrictype", "metricdevice", "metricelement"])
 
         for device in enclosure:
