@@ -696,7 +696,7 @@ class TrueNasCollector(object):
         return [health_metrics, health_status]
 
     def _enclosure_status_enum(self, value):
-        if value == "OK" or value == "OK, Swapped":
+        if value in ["OK", "OK, Swapped"]:
             return 1
         elif value == "Unknown" or value == "Not installed":
             return 2
@@ -704,6 +704,8 @@ class TrueNasCollector(object):
             return 3
         elif value == "Unsupported":
             return 4
+        elif value == "Not Installed, Swapped":
+            return 5
 
         unknown_enumerations.inc()
         print(f"Unknown/new enclosure health state: {value}. Needs to be added to " +
